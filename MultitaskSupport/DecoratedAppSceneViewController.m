@@ -41,6 +41,24 @@ void UIKitFixesInit(void) {
 @property(nonatomic) bool isAppTerminationRequested;
 @end
 
+static UIInterfaceOrientation LCCurrentInterfaceOrientation(void) {
+    UIWindowScene *windowScene = nil;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) {
+            continue;
+        }
+        UIWindowScene *candidateScene = (UIWindowScene *)scene;
+        if (candidateScene.activationState == UISceneActivationStateForegroundActive) {
+            windowScene = candidateScene;
+            break;
+        }
+        if (!windowScene) {
+            windowScene = candidateScene;
+        }
+    }
+    return windowScene ? windowScene.interfaceOrientation : UIInterfaceOrientationPortrait;
+}
+
 @implementation DecoratedAppSceneViewController
 - (instancetype)initWindowName:(NSString*)windowName bundleId:(NSString*)bundleId dataUUID:(NSString*)dataUUID rootVC:(UIViewController*)rootVC {
     self = [super initWithNibName:nil bundle:nil];
@@ -121,7 +139,7 @@ void UIKitFixesInit(void) {
 - (void)setupDecoratedView {
     CGFloat navBarHeight = 44;
     self.view = [UIStackView new];
-    BOOL isLandscape = UIInterfaceOrientationIsLandscape(UIApplication.sharedApplication.statusBarOrientation);
+    BOOL isLandscape = UIInterfaceOrientationIsLandscape(LCCurrentInterfaceOrientation());
     CGRect frame = CGRectMake(0, 0, isLandscape ? 480 : 320, (isLandscape ? 320 : 480) + navBarHeight);
     CGPoint rootViewCenter = self.view.superview.center;
     frame.origin = CGPointMake(rootViewCenter.x - frame.size.width / 2, rootViewCenter.y - frame.size.height / 2);
@@ -544,7 +562,7 @@ void UIKitFixesInit(void) {
     // scale peripheryInsets to match the scale ratio
     settings.peripheryInsets = UIEdgeInsetsMake(settings.peripheryInsets.top/_scaleRatio, settings.peripheryInsets.left/_scaleRatio, settings.peripheryInsets.bottom/_scaleRatio, settings.peripheryInsets.right/_scaleRatio);
     if(UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad) {
-        UIInterfaceOrientation currentOrientation = UIApplication.sharedApplication.statusBarOrientation;
+        UIInterfaceOrientation currentOrientation = LCCurrentInterfaceOrientation();
         if(UIInterfaceOrientationIsLandscape(currentOrientation)) {
             safeAreaInsets.top = 0;
         }
