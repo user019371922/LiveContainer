@@ -4,6 +4,7 @@
 #import "AppSceneViewController.h"
 #import "UIKitPrivate+MultitaskSupport.h"
 #import "PiPManager.h"
+#import "VirtualWindowsHostView.h"
 #import "../LiveContainer/Localization.h"
 #import "utils.h"
 
@@ -65,7 +66,7 @@ static UIInterfaceOrientation LCCurrentInterfaceOrientation(void) {
     _scaleRatio = 1.0;
     _isMaximized = [NSUserDefaults.lcUserDefaults boolForKey:@"LCLaunchMultitaskMaximized"];
     [rootVC addChildViewController:self];
-    [rootVC.view addSubview:self.view];
+    [MultitaskDockManager.shared.windowHostingView addSubview:self.view];
     _appSceneVC = [[AppSceneViewController alloc] initWithBundleId:bundleId dataUUID:dataUUID delegate:self];
     [self setupDecoratedView];
     
@@ -297,6 +298,7 @@ static UIInterfaceOrientation LCCurrentInterfaceOrientation(void) {
         if (!finished) return;
         self.view.hidden = YES;
         self.view.transform = CGAffineTransformIdentity;
+        [self.view.superview sendSubviewToBack:self.view];
     }];
 }
 
