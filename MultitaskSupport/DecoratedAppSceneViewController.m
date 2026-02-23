@@ -390,9 +390,6 @@ static UIInterfaceOrientation LCCurrentInterfaceOrientation(void) {
             [alert addAction:[UIAlertAction actionWithTitle:@"lc.common.ok".loc style:UIAlertActionStyleCancel handler:nil]];
             [alert addAction:[UIAlertAction actionWithTitle:@"lc.common.copy".loc style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
                 UIPasteboard.generalPasteboard.string = error.localizedDescription;
-                if (self.pidAvailableHandler) {
-                    self.pidAvailableHandler(nil, error);
-                }
             }]];
             [self presentViewController:alert animated:YES completion:nil];
         } else {
