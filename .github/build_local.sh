@@ -98,6 +98,15 @@ payload_root="$build_root/Payload"
 app_root="$payload_root/LiveContainer.app"
 tmp_root="$build_root/tmp"
 
+cleanup_build_root() {
+  if [[ -d "$build_root" ]]; then
+    log "removing build cache: $build_root"
+    rm -r "$build_root"
+  fi
+}
+
+trap cleanup_build_root EXIT
+
 while IFS= read -r old_build_dir; do
   if [[ -z "$old_build_dir" ]]; then
     continue
