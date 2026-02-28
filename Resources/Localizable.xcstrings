@@ -27646,7 +27646,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "لم يتم العثور على ‎.dylib أو ‎.framework في هذا المجلد."
+            "value" : "لم يتم العثور على .dylib أو .framework في هذا المجلد."
           }
         },
         "de" : {
@@ -27741,7 +27741,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "لم يتم العثور على ‎.dylib أو ‎.framework داخل الحزمة."
+            "value" : "لم يتم العثور على .dylib أو .framework داخل الحزمة."
           }
         },
         "de" : {
@@ -27836,7 +27836,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "حزمة التعديل غير مدعومة. استخدم ‎.dylib أو أرشيفًا يحتوي على ‎.dylib/.framework."
+            "value" : "حزمة التعديل غير مدعومة. استخدم .dylib أو أرشيفًا يحتوي على .dylib/.framework."
           }
         },
         "de" : {
@@ -28586,6 +28586,101 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "點擊 framework 資料夾可開啟並管理其中的檔案。"
+          }
+        }
+      }
+    },
+    "lc.tweakView.helpText6" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "التثبيت من الرابط يدعم حزم .deb ويستخرج تلقائيًا ملفات .dylib/.framework منها."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Installation per URL unterstützt .deb-Pakete und extrahiert .dylib/.framework automatisch daraus."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Install from URL supports .deb packages and automatically extracts .dylib/.framework from them."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’installation depuis une URL prend en charge les paquets .deb et en extrait automatiquement les fichiers .dylib/.framework."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'installazione da URL supporta i pacchetti .deb ed estrae automaticamente i file .dylib/.framework."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URLからのインストールは .deb パッケージに対応しており、.dylib/.framework を自動抽出します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL 설치는 .deb 패키지를 지원하며, 내부의 .dylib/.framework를 자동으로 추출합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalacja z URL obsługuje pakiety .deb i automatycznie wyodrębnia z nich pliki .dylib/.framework."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A instalação por URL suporta pacotes .deb e extrai automaticamente arquivos .dylib/.framework deles."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Установка по URL поддерживает пакеты .deb и автоматически извлекает из них .dylib/.framework."
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installation via URL stöder .deb-paket och extraherar automatiskt .dylib/.framework från dem."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL üzerinden kurulum .deb paketlerini destekler ve içlerinden .dylib/.framework dosyalarını otomatik çıkarır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cài đặt từ URL hỗ trợ gói .deb và tự động giải nén các tệp .dylib/.framework bên trong."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过 URL 安装支持 .deb 包，并会自动提取其中的 .dylib/.framework。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過 URL 安裝支援 .deb 套件，並會自動擷取其中的 .dylib/.framework。"
           }
         }
       }

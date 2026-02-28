@@ -55,6 +55,7 @@ struct LCTweakHelpView: View {
                     Text("lc.tweakView.helpText3".loc)
                     Text("lc.tweakView.helpText4".loc)
                     Text("lc.tweakView.helpText5".loc)
+                    Text("lc.tweakView.helpText6".loc)
                 }
             }
             .navigationTitle("lc.tweakView.helpTitle".loc)
@@ -308,6 +309,7 @@ struct LCTweakFolderView : View {
         if tweakItem.isFolder || tweakItem.isFramework {
             NavigationLink {
                 LCTweakFolderView(baseUrl: tweakItem.fileUrl, isRoot: false, tweakFolders: $tweakFolders)
+                    .environmentObject(moveContext)
             } label: {
                 tweakItemLabel(tweakItem)
             }
@@ -317,7 +319,10 @@ struct LCTweakFolderView : View {
     }
 
     private func tweakItemLabel(_ tweakItem: LCTweakItem) -> some View {
-        HStack(spacing: 10) {
+        Label {
+            Text(tweakItem.fileUrl.lastPathComponent)
+                .lineLimit(1)
+        } icon: {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: iconName(for: tweakItem))
                     .frame(width: 20, height: 20)
@@ -331,9 +336,6 @@ struct LCTweakFolderView : View {
                         .offset(x: 4, y: -4)
                 }
             }
-            Text(tweakItem.fileUrl.lastPathComponent)
-                .lineLimit(1)
-            Spacer()
         }
     }
 
@@ -788,6 +790,11 @@ struct LCTweakFolderView : View {
             return
         }
 
+        if isDebPackageURL(artifactURL) {
+            try await installDebPackage(artifactURL)
+            return
+        }
+
         // Try to treat remote artifact as archive package containing .dylib or .framework
         let extractionDir = fm.temporaryDirectory.appendingPathComponent("LCTweakExtract_\(UUID().uuidString)")
         try fm.createDirectory(at: extractionDir, withIntermediateDirectories: true)
@@ -805,6 +812,72 @@ struct LCTweakFolderView : View {
             throw "lc.tweakView.error.noTweakInPackage".loc
         }
         await startInstallTweak(candidates)
+    }
+
+    private func isDebPackageURL(_ url: URL) -> Bool {
+        url.pathExtension.caseInsensitiveCompare("deb") == .orderedSame
+    }
+
+    private func installDebPackage(_ debURL: URL) async throws {
+        let fm = FileManager.default
+        let debRoot = fm.temporaryDirectory.appendingPathComponent("LCTweakDebExtract_\(UUID().uuidString)")
+        try fm.createDirectory(at: debRoot, withIntermediateDirectories: true)
+        defer {
+            try? fm.removeItem(at: debRoot)
+        }
+
+        let debProgress = Progress.discreteProgress(totalUnitCount: 100)
+        guard await decompress(debURL.path, debRoot.path, debProgress) == 0 else {
+            throw "lc.tweakView.error.unsupportedPackage".loc
+        }
+
+        var candidates = try collectTweakCandidates(in: debRoot)
+        let dataArchives = try findDebDataArchives(in: debRoot)
+
+        if dataArchives.isEmpty && candidates.isEmpty {
+            throw "lc.tweakView.error.unsupportedPackage".loc
+        }
+
+        for (index, dataArchive) in dataArchives.enumerated() {
+            let payloadDir = debRoot.appendingPathComponent("payload_\(index)")
+            try fm.createDirectory(at: payloadDir, withIntermediateDirectories: true)
+            let payloadProgress = Progress.discreteProgress(totalUnitCount: 100)
+            guard await decompress(dataArchive.path, payloadDir.path, payloadProgress) == 0 else {
+                continue
+            }
+            candidates.append(contentsOf: try collectTweakCandidates(in: payloadDir))
+        }
+
+        let deduped = dedupCandidateURLs(candidates)
+        if deduped.isEmpty {
+            throw "lc.tweakView.error.noTweakInPackage".loc
+        }
+        await startInstallTweak(deduped)
+    }
+
+    private func findDebDataArchives(in rootURL: URL) throws -> [URL] {
+        let fm = FileManager.default
+        let files = try fm.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+        return files.filter { url in
+            let name = url.lastPathComponent.lowercased()
+            return name.hasPrefix("data.tar")
+        }.sorted {
+            $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending
+        }
+    }
+
+    private func dedupCandidateURLs(_ candidates: [URL]) -> [URL] {
+        var seen = Set<String>()
+        var deduped: [URL] = []
+        for url in candidates {
+            let key = url.standardizedFileURL.path
+            if seen.insert(key).inserted {
+                deduped.append(url)
+            }
+        }
+        return deduped.sorted {
+            $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending
+        }
     }
 
     private func collectTweakCandidates(in rootURL: URL) throws -> [URL] {
@@ -842,8 +915,8 @@ struct LCTweaksView: View {
     var body: some View {
         NavigationView {
             LCTweakFolderView(baseUrl: LCPath.tweakPath, isRoot: true, tweakFolders: $tweakFolders)
-                .environmentObject(moveContext)
         }
+        .environmentObject(moveContext)
         .navigationViewStyle(StackNavigationViewStyle())
 
     }
