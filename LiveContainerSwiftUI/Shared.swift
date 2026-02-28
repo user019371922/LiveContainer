@@ -734,6 +734,7 @@ extension LCUtils {
         }
         
         // move signed files back and rebuild TweakInfo.plist
+        let disabledTweaks = tweakSignInfo["disabledItems"]
         tweakSignInfo.removeAllObjects()
         var fileInodes = [String:NSNumber]()
         for tmpFile in tmpPaths {
@@ -751,6 +752,9 @@ extension LCUtils {
         try fm.removeItem(at: tmpDir)
 
         tweakSignInfo["files"] = fileInodes
+        if let disabledTweaks {
+            tweakSignInfo["disabledItems"] = disabledTweaks
+        }
         try tweakSignInfo.write(to: tweakFolderUrl.appendingPathComponent("TweakInfo.plist"))
         
     }

@@ -87,10 +87,10 @@ need_cmd find
 scheme="${scheme:-LiveContainer}"
 archive_path="${archive_path:-archive}"
 base_ipa_path="${BASE_IPA_PATH:-}"
-base_ipa_url="${BASE_IPA_URL:-https://github.com/LiveContainer/LiveContainer/releases/latest/download/LiveContainer.ipa}"
 sidestore_ipa_url="${SIDESTORE_IPA_URL:-https://github.com/LiveContainer/SideStore/releases/download/nightly/SideStore.ipa}"
 dylibify_url="${DYLIBIFY_URL:-https://github.com/LiveContainer/SideStore/releases/download/dylibify/dylibify}"
-source_build="${SOURCE_BUILD:-0}"
+# default behavior: build current local project sources
+source_build="${SOURCE_BUILD:-1}"
 local_sdk_path="${LOCAL_SDK_PATH:-}"
 work_dir="${PWD}"
 build_root="$work_dir/.build_no_xcode_$(date +%s)"
@@ -181,10 +181,13 @@ elif [[ -n "$base_ipa_path" && -f "$base_ipa_path" ]]; then
   log "using local base ipa: $base_ipa_path"
   unzip -q "$base_ipa_path" -d "$build_root"
 else
-  local_base_ipa="$tmp_root/LiveContainer.base.ipa"
-  log "downloading base ipa: $base_ipa_url"
-  download_file "$base_ipa_url" "$local_base_ipa"
-  unzip -q "$local_base_ipa" -d "$build_root"
+  echo "no local app bundle found for packaging." >&2
+  echo "expected one of:" >&2
+  echo "  - SOURCE_BUILD=1 archive output at $archive_path.xcarchive/Products/Applications" >&2
+  echo "  - Payload/LiveContainer.app in project root" >&2
+  echo "  - BASE_IPA_PATH=/path/to/local.ipa" >&2
+  echo "remote base ipa download is disabled in build_local.sh." >&2
+  exit 1
 fi
 
 if [[ ! -d "$app_root" ]]; then
