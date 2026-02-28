@@ -1083,10 +1083,10 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         await MainActor.run {
             let encoded = script?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
                 .map { "&script-data=\($0)" } ?? ""
-            if let url = URL(string: "stikjit://enable-jit?bundle-id=\(Bundle.main.bundleIdentifier!)&pid=\(pid)\(encoded)") {
-                if let jitEnabler = JITEnablerType(rawValue: LCUtils.appGroupUserDefault.integer(forKey: "LCJITEnablerType")), jitEnabler == .StikJITLC {
-                    if let app = sharedModel.apps.first(where: { app in
-                        return app.appInfo.urlSchemes().contains("stikjit") &&
+                if let url = URL(string: "stikjit://enable-jit?bundle-id=\(Bundle.main.bundleIdentifier!)&pid=\(pid)\(encoded)") {
+                    if let jitEnabler = JITEnablerType(rawValue: LCUtils.appGroupUserDefault.integer(forKey: "LCJITEnablerType")), jitEnabler == .StikJITLC {
+                    if sharedModel.apps.contains(where: { app in
+                        app.appInfo.urlSchemes().contains("stikjit") &&
                         (sharedModel.multiLCStatus != 2 || app.appInfo.isShared)
                     }) {
                         Task { await openWebView(urlString: url.absoluteString) }
