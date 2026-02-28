@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 private let lcDisabledTweaksKey = "disabledItems"
 
@@ -92,9 +93,9 @@ struct LCTweakFolderView : View {
     @State private var isInstallingFromURL = false
     @State private var helpPresent = false
     @State private var disabledTweaks: Set<String>
-
-    @EnvironmentObject private var moveContext: LCTweakMoveContext
     
+    @EnvironmentObject private var moveContext: LCTweakMoveContext
+
     init(baseUrl: URL, isRoot: Bool = false, tweakFolders: Binding<[String]>) {
         _baseUrl = State(initialValue: baseUrl)
         _tweakFolders = tweakFolders
@@ -296,8 +297,8 @@ struct LCTweakFolderView : View {
                 installUrlInput.close(result: nil)
             }
         )
-        .betterFileImporter(isPresented: $choosingTweak, types: [.dylib, .lcFramework, /*.deb*/], multiple: true, callback: { fileUrls in
-            Task { await startInstallTweak(fileUrls) }
+        .betterFileImporter(isPresented: $choosingTweak, types: [.dylib, .lcFramework, .zipArchive, .deb], multiple: true, callback: { fileUrls in
+            Task { await importSelectedTweaks(fileUrls) }
         }, onDismiss: {
             choosingTweak = false
         })
@@ -509,6 +510,36 @@ struct LCTweakFolderView : View {
             tweakFolders.append(newName)
         }
     }
+
+    func importSelectedTweaks(_ urls: [URL]) async {
+        do {
+            let fm = FileManager.default
+            for fileUrl in urls {
+                if !fileUrl.isFileURL {
+                    throw "lc.tweakView.notFileError %@".localizeWithFormat(fileUrl.lastPathComponent)
+                }
+
+                var didStartAccess = false
+                if !fm.isReadableFile(atPath: fileUrl.path) {
+                    didStartAccess = fileUrl.startAccessingSecurityScopedResource()
+                    if !didStartAccess {
+                        throw "lc.appList.ipaAccessError".loc
+                    }
+                }
+                defer {
+                    if didStartAccess {
+                        fileUrl.stopAccessingSecurityScopedResource()
+                    }
+                }
+
+                try await installDownloadedTweakArtifact(fileUrl)
+            }
+        } catch {
+            errorInfo = error.localizedDescription
+            errorShow = true
+            return
+        }
+    }
     
     func startInstallTweak(_ urls: [URL]) async {
         do {
@@ -545,6 +576,7 @@ struct LCTweakFolderView : View {
             return
         }
         let name = tweakItem.fileUrl.lastPathComponent
+        let wasDisabled = disabledTweaks.contains(name)
         if disabledTweaks.contains(name) {
             disabledTweaks.remove(name)
         } else {
@@ -552,9 +584,23 @@ struct LCTweakFolderView : View {
         }
         do {
             try persistDisabledTweaks()
+            triggerToggleHaptic(enabled: wasDisabled)
         } catch {
             errorShow = true
             errorInfo = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+
+    private func triggerToggleHaptic(enabled: Bool) {
+        if enabled {
+            let generator = UINotificationFeedbackGenerator()
+            generator.prepare()
+            generator.notificationOccurred(.success)
+        } else {
+            let generator = UIImpactFeedbackGenerator(style: .rigid)
+            generator.prepare()
+            generator.impactOccurred(intensity: 1.0)
         }
     }
 
