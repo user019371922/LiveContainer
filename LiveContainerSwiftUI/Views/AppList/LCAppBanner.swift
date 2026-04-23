@@ -35,6 +35,50 @@ private struct TweakCopyDestination: Identifiable, Hashable {
     let folderURL: URL
 }
 
+private func lcListExportableBinaries(bundlePath: String) throws -> [AppBinaryExportItem] {
+    let rootURL = URL(fileURLWithPath: bundlePath, isDirectory: true)
+    let fm = FileManager.default
+
+    guard let enumerator = fm.enumerator(
+        at: rootURL,
+        includingPropertiesForKeys: [.isDirectoryKey],
+        options: [.skipsHiddenFiles]
+    ) else {
+        return []
+    }
+
+    var items: [AppBinaryExportItem] = []
+    var seenPaths = Set<String>()
+    let rootPrefix = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
+
+    for case let itemURL as URL in enumerator {
+        let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey])
+        let isDirectory = values.isDirectory ?? false
+
+        if isDirectory && itemURL.pathExtension.lowercased() == "framework" {
+            let relativePath = itemURL.path.hasPrefix(rootPrefix) ? String(itemURL.path.dropFirst(rootPrefix.count)) : itemURL.lastPathComponent
+            if seenPaths.insert(relativePath).inserted {
+                items.append(AppBinaryExportItem(id: "framework:\(relativePath)", url: itemURL, relativePath: relativePath, kind: .framework))
+            }
+            continue
+        }
+
+        if !isDirectory && itemURL.pathExtension.lowercased() == "dylib" {
+            let relativePath = itemURL.path.hasPrefix(rootPrefix) ? String(itemURL.path.dropFirst(rootPrefix.count)) : itemURL.lastPathComponent
+            if seenPaths.insert(relativePath).inserted {
+                items.append(AppBinaryExportItem(id: "dylib:\(relativePath)", url: itemURL, relativePath: relativePath, kind: .dylib))
+            }
+        }
+    }
+
+    return items.sorted { lhs, rhs in
+        if lhs.kind == rhs.kind {
+            return lhs.relativePath.localizedCaseInsensitiveCompare(rhs.relativePath) == .orderedAscending
+        }
+        return lhs.kind.rawValue < rhs.kind.rawValue
+    }
+}
+
 struct LCAppBanner : View {
     @State var appInfo: LCAppInfo
     var delegate: LCAppBannerDelegate
@@ -649,7 +693,7 @@ struct LCAppBanner : View {
         Task {
             do {
                 let items = try await Task.detached(priority: .userInitiated) {
-                    try LCAppBanner.listExportableBinaries(bundlePath: bundlePath)
+                    try lcListExportableBinaries(bundlePath: bundlePath)
                 }.value
                 await MainActor.run {
                     binaryExportItems = items
@@ -708,11 +752,11 @@ struct LCAppBanner : View {
             return
         }
         tweakCopyDestinations = destinations
-        selectedTweakCopyDestinationID = preferredTweakCopyDestinationID(in: destinations)
+        selectedTweakCopyDestinationID = destinations.first?.id
         showCopyToTweaksSheet = true
     }
 
-    func buildTweakCopyDestinations() -> [TweakCopyDestination] {
+    private func buildTweakCopyDestinations() -> [TweakCopyDestination] {
         let fm = FileManager.default
         var destinations: [TweakCopyDestination] = []
         var seen = Set<String>()
@@ -743,33 +787,7 @@ struct LCAppBanner : View {
             }
             destinations.append(TweakCopyDestination(id: folderURL.path, title: folder, folderURL: folderURL))
         }
-
-        if let lastPath = LCUtils.appGroupUserDefault.string(forKey: LCUserDefaultsKey.lastOpenedTweakFolderPath), !lastPath.isEmpty {
-            let lastURL = URL(fileURLWithPath: lastPath, isDirectory: true)
-            var isDir: ObjCBool = false
-            if fm.fileExists(atPath: lastURL.path, isDirectory: &isDir), isDir.boolValue, lastURL.path.hasPrefix(rootURL.path) {
-                let key = lastURL.standardizedFileURL.path
-                if seen.insert(key).inserted {
-                    destinations.append(TweakCopyDestination(id: lastURL.path, title: "\(lastURL.lastPathComponent) (Last Opened)", folderURL: lastURL))
-                }
-            }
-        }
-
         return destinations
-    }
-
-    func preferredTweakCopyDestinationID(in destinations: [TweakCopyDestination]) -> String? {
-        if let lastPath = LCUtils.appGroupUserDefault.string(forKey: LCUserDefaultsKey.lastOpenedTweakFolderPath), !lastPath.isEmpty,
-           destinations.contains(where: { $0.id == lastPath }) {
-            return lastPath
-        }
-        if let appFolder = model.uiTweakFolder, !appFolder.isEmpty {
-            let appFolderPath = LCPath.tweakPath.appendingPathComponent(appFolder, isDirectory: true).path
-            if destinations.contains(where: { $0.id == appFolderPath }) {
-                return appFolderPath
-            }
-        }
-        return destinations.first?.id
     }
 
     func copySelectedToTweaks() async {
@@ -935,50 +953,6 @@ struct LCAppBanner : View {
 
         try await zipDirectory(sourceURL: stagedContainerURL, destinationURL: exportURL)
         return exportURL
-    }
-
-    private static func listExportableBinaries(bundlePath: String) throws -> [AppBinaryExportItem] {
-        let rootURL = URL(fileURLWithPath: bundlePath, isDirectory: true)
-        let fm = FileManager.default
-
-        guard let enumerator = fm.enumerator(
-            at: rootURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return []
-        }
-
-        var items: [AppBinaryExportItem] = []
-        var seenPaths = Set<String>()
-        let rootPrefix = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
-
-        for case let itemURL as URL in enumerator {
-            let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey])
-            let isDirectory = values.isDirectory ?? false
-
-            if isDirectory && itemURL.pathExtension.lowercased() == "framework" {
-                let relativePath = itemURL.path.hasPrefix(rootPrefix) ? String(itemURL.path.dropFirst(rootPrefix.count)) : itemURL.lastPathComponent
-                if seenPaths.insert(relativePath).inserted {
-                    items.append(AppBinaryExportItem(id: "framework:\(relativePath)", url: itemURL, relativePath: relativePath, kind: .framework))
-                }
-                continue
-            }
-
-            if !isDirectory && itemURL.pathExtension.lowercased() == "dylib" {
-                let relativePath = itemURL.path.hasPrefix(rootPrefix) ? String(itemURL.path.dropFirst(rootPrefix.count)) : itemURL.lastPathComponent
-                if seenPaths.insert(relativePath).inserted {
-                    items.append(AppBinaryExportItem(id: "dylib:\(relativePath)", url: itemURL, relativePath: relativePath, kind: .dylib))
-                }
-            }
-        }
-
-        return items.sorted { lhs, rhs in
-            if lhs.kind == rhs.kind {
-                return lhs.relativePath.localizedCaseInsensitiveCompare(rhs.relativePath) == .orderedAscending
-            }
-            return lhs.kind.rawValue < rhs.kind.rawValue
-        }
     }
 
     private func createSelectedBinaryArchive(selectedItems: [AppBinaryExportItem]) async throws -> URL {
