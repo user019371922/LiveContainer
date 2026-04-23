@@ -34,6 +34,27 @@ private struct AppExportShareItem: Identifiable {
     let fileURL: URL
 }
 
+private let lcExportArtifactDirectoryName = "LCExports"
+
+private func lcExportArtifactDirectoryURL(fileManager: FileManager = .default) -> URL {
+    fileManager.temporaryDirectory.appendingPathComponent(lcExportArtifactDirectoryName, isDirectory: true)
+}
+
+private func lcEnsureExportArtifactDirectory(fileManager: FileManager = .default) throws -> URL {
+    let directoryURL = lcExportArtifactDirectoryURL(fileManager: fileManager)
+    var isDirectory: ObjCBool = false
+    if fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory), !isDirectory.boolValue {
+        try fileManager.removeItem(at: directoryURL)
+    }
+    try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    return directoryURL
+}
+
+private func lcExportArtifactFileURL(fileName: String, fileManager: FileManager = .default) throws -> URL {
+    let directoryURL = try lcEnsureExportArtifactDirectory(fileManager: fileManager)
+    return directoryURL.appendingPathComponent(fileName)
+}
+
 private func lcListExportableBinaries(bundlePath: String) throws -> [AppBinaryExportItem] {
     let rootURL = URL(fileURLWithPath: bundlePath, isDirectory: true)
     let fm = FileManager.default
@@ -106,6 +127,7 @@ struct LCAppBanner : View {
     @State private var showCopyToTweaksSheet = false
     @State private var isCopyingSelectionToTweaks = false
     @State private var exportShareItem: AppExportShareItem?
+    @State private var exportShareCleanupURLs: [URL] = []
     
     @AppStorage("dynamicColors", store: LCUtils.appGroupUserDefault) var dynamicColors = true
     @AppStorage("darkModeIcon", store: LCUtils.appGroupUserDefault) var darkModeIcon = false
@@ -400,7 +422,9 @@ struct LCAppBanner : View {
                 }
             )
         }
-        .sheet(item: $exportShareItem) { item in
+        .sheet(item: $exportShareItem, onDismiss: {
+            cleanupSharedExportFileIfNeeded()
+        }) { item in
             ActivityViewController(activityItems: [item.fileURL])
         }
         .onChange(of: darkModeIcon) { newVal in
@@ -499,6 +523,14 @@ struct LCAppBanner : View {
         )
         sectionChildren.append(exportMenu)
 
+        let cloneAction = UIAction(
+            title: "Clone App",
+            image: UIImage(systemName: "square.on.square")
+        ) { _ in
+            Task { await cloneApp() }
+        }
+        sectionChildren.append(cloneAction)
+
         // Settings
         let settingsAction = UIAction(title: "lc.tabView.settings".loc, image: UIImage(systemName: "gear")) { _ in
             openSettings()
@@ -592,6 +624,106 @@ struct LCAppBanner : View {
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true
+        }
+    }
+
+    func cloneApp() async {
+        do {
+            let clonedAppModel = try await createClonedAppModel()
+            DispatchQueue.main.async {
+                sharedModel.apps.append(clonedAppModel)
+            }
+            successInfo = "Cloned app created."
+            successShow = true
+        } catch {
+            errorInfo = error.localizedDescription
+            errorShow = true
+        }
+    }
+
+    func createClonedAppModel() async throws -> LCAppModel {
+        let fm = FileManager.default
+        guard let sourceBundlePath = appInfo.bundlePath() else {
+            throw "Unable to read app bundle path."
+        }
+
+        let sourceBundleURL = URL(fileURLWithPath: sourceBundlePath, isDirectory: true)
+        let targetRootURL = model.uiIsShared ? LCPath.lcGroupBundlePath : LCPath.bundlePath
+        try fm.createDirectory(at: targetRootURL, withIntermediateDirectories: true)
+
+        let cloneRelativeBundlePath = makeCloneRelativeBundlePath(targetRootURL: targetRootURL, fileManager: fm)
+        let destinationBundleURL = targetRootURL.appendingPathComponent(cloneRelativeBundlePath, isDirectory: true)
+
+        do {
+            try fm.copyItem(at: sourceBundleURL, to: destinationBundleURL)
+        } catch {
+            throw "Failed to copy app bundle: \(error.localizedDescription)"
+        }
+
+        do {
+            try resetClonedAppInfo(at: destinationBundleURL, fileManager: fm)
+            guard let clonedAppInfo = LCAppInfo(bundlePath: destinationBundleURL.path) else {
+                throw "Failed to initialize cloned app."
+            }
+            clonedAppInfo.relativeBundlePath = cloneRelativeBundlePath
+            clonedAppInfo.isShared = model.uiIsShared
+            clonedAppInfo.spoofSDKVersion = true
+            clonedAppInfo.installationDate = Date.now
+            try await signClonedAppIfNeeded(clonedAppInfo)
+            return LCAppModel(appInfo: clonedAppInfo, delegate: model.delegate)
+        } catch {
+            try? fm.removeItem(at: destinationBundleURL)
+            throw error
+        }
+    }
+
+    func makeCloneRelativeBundlePath(targetRootURL: URL, fileManager: FileManager) -> String {
+        let bundleIdStem = (appInfo.bundleIdentifier() ?? appInfo.displayName() ?? "ClonedApp").sanitizeNonACSII()
+        let stem = bundleIdStem.isEmpty ? "ClonedApp" : bundleIdStem
+        let timestamp = Int(Date().timeIntervalSince1970)
+
+        var candidate = "\(stem)_\(timestamp).app"
+        var index = 2
+        while fileManager.fileExists(atPath: targetRootURL.appendingPathComponent(candidate).path) {
+            candidate = "\(stem)_\(timestamp)_\(index).app"
+            index += 1
+        }
+        return candidate
+    }
+
+    func resetClonedAppInfo(at clonedBundleURL: URL, fileManager: FileManager) throws {
+        let lcAppInfoPath = clonedBundleURL.appendingPathComponent("LCAppInfo.plist")
+        if fileManager.fileExists(atPath: lcAppInfoPath.path) {
+            try fileManager.removeItem(at: lcAppInfoPath)
+        }
+
+        let iconCacheFiles = [
+            "LCAppIconLight.png",
+            "LCAppIconDark.png",
+            "zsign_cache.json",
+            "LiveContainer.tmp"
+        ]
+        for fileName in iconCacheFiles {
+            let fileURL = clonedBundleURL.appendingPathComponent(fileName)
+            if fileManager.fileExists(atPath: fileURL.path) {
+                try? fileManager.removeItem(at: fileURL)
+            }
+        }
+    }
+
+    func signClonedAppIfNeeded(_ clonedAppInfo: LCAppInfo) async throws {
+        var signError: String?
+        var signSuccess = false
+        await withUnsafeContinuation { continuation in
+            clonedAppInfo.patchExecAndSignIfNeed(completionHandler: { success, error in
+                signSuccess = success
+                signError = error
+                continuation.resume()
+            }, progressHandler: { _ in
+            }, forceSign: false)
+        }
+        if let signError, !signSuccess {
+            throw signError.loc
         }
     }
 
@@ -844,7 +976,7 @@ struct LCAppBanner : View {
 
         let appName = sanitizedFileStem(appInfo.displayName() ?? "App")
         let fileName = includeData ? "\(appName)-with-data.ipa" : "\(appName).ipa"
-        let exportURL = fm.temporaryDirectory.appendingPathComponent(fileName)
+        let exportURL = try lcExportArtifactFileURL(fileName: fileName, fileManager: fm)
         try? fm.removeItem(at: exportURL)
 
         try await zipDirectory(sourceURL: stagingRoot, destinationURL: exportURL)
@@ -885,7 +1017,7 @@ struct LCAppBanner : View {
         let stagedContainerURL = stagingRoot.appendingPathComponent("\(appName)-\(containerName)-data", isDirectory: true)
         try copyContainerDataForExport(from: containerURL, to: stagedContainerURL)
 
-        let exportURL = fm.temporaryDirectory.appendingPathComponent("\(appName)-\(containerName)-data.zip")
+        let exportURL = try lcExportArtifactFileURL(fileName: "\(appName)-\(containerName)-data.zip", fileManager: fm)
         try? fm.removeItem(at: exportURL)
 
         try await zipDirectory(sourceURL: stagedContainerURL, destinationURL: exportURL)
@@ -912,7 +1044,7 @@ struct LCAppBanner : View {
             try fm.copyItem(at: item.url, to: destinationURL)
         }
 
-        let archiveURL = fm.temporaryDirectory.appendingPathComponent("\(appName)-dylibs-frameworks.zip")
+        let archiveURL = try lcExportArtifactFileURL(fileName: "\(appName)-dylibs-frameworks.zip", fileManager: fm)
         try? fm.removeItem(at: archiveURL)
         try await zipDirectory(sourceURL: contentRoot, destinationURL: archiveURL)
         return archiveURL
@@ -943,7 +1075,24 @@ struct LCAppBanner : View {
 
     @MainActor
     func presentShareSheet(for fileURL: URL) {
+        if !exportShareCleanupURLs.contains(fileURL) {
+            exportShareCleanupURLs.append(fileURL)
+        }
         exportShareItem = AppExportShareItem(fileURL: fileURL)
+    }
+
+    func cleanupSharedExportFileIfNeeded() {
+        if exportShareCleanupURLs.isEmpty {
+            return
+        }
+        let fileURLs = exportShareCleanupURLs
+        exportShareCleanupURLs.removeAll()
+        let fm = FileManager.default
+        for fileURL in fileURLs {
+            if fm.fileExists(atPath: fileURL.path) {
+                try? fm.removeItem(at: fileURL)
+            }
+        }
     }
 
     func sanitizedFileStem(_ value: String) -> String {
