@@ -29,12 +29,6 @@ private struct AppBinaryExportItem: Identifiable, Hashable, Sendable {
     let kind: AppBinaryExportKind
 }
 
-private struct TweakCopyDestination: Identifiable, Hashable {
-    let id: String
-    let title: String
-    let folderURL: URL
-}
-
 private func lcListExportableBinaries(bundlePath: String) throws -> [AppBinaryExportItem] {
     let rootURL = URL(fileURLWithPath: bundlePath, isDirectory: true)
     let fm = FileManager.default
@@ -105,9 +99,9 @@ struct LCAppBanner : View {
     @State private var isBinaryExportListLoading = false
     @State private var isExportingBinarySelection = false
     @State private var showCopyToTweaksSheet = false
-    @State private var tweakCopyDestinations: [TweakCopyDestination] = []
-    @State private var selectedTweakCopyDestinationID: String?
     @State private var isCopyingSelectionToTweaks = false
+    @State private var showExportShareSheet = false
+    @State private var exportShareURL: URL?
     
     @AppStorage("dynamicColors", store: LCUtils.appGroupUserDefault) var dynamicColors = true
     @AppStorage("darkModeIcon", store: LCUtils.appGroupUserDefault) var darkModeIcon = false
@@ -346,8 +340,8 @@ struct LCAppBanner : View {
                         }
                     }
                 }
-                .navigationTitle("Export Binaries")
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationTitle("Export Dylibs & Frameworks")
+                .navigationBarTitleDisplayMode(.large)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") {
@@ -392,40 +386,22 @@ struct LCAppBanner : View {
             .navigationViewStyle(.stack)
         }
         .sheet(isPresented: $showCopyToTweaksSheet) {
-            NavigationView {
-                List {
-                    ForEach(tweakCopyDestinations) { destination in
-                        Button {
-                            selectedTweakCopyDestinationID = destination.id
-                        } label: {
-                            HStack {
-                                Image(systemName: selectedTweakCopyDestinationID == destination.id ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selectedTweakCopyDestinationID == destination.id ? Color.accentColor : Color.secondary)
-                                Text(destination.title)
-                                Spacer()
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
+            LCTweaksCopyDestinationView(
+                tweakFolders: $tweakFolders,
+                onClose: {
+                    showCopyToTweaksSheet = false
+                },
+                onCopyHere: { destinationURL in
+                    Task { await copySelectedToTweaks(destinationFolderURL: destinationURL) }
                 }
-                .navigationTitle("Copy to Tweaks")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") {
-                            showCopyToTweaksSheet = false
-                        }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Copy") {
-                            Task { await copySelectedToTweaks() }
-                        }
-                        .disabled(selectedTweakCopyDestinationID == nil || isCopyingSelectionToTweaks)
-                    }
-                }
+            )
+        }
+        .sheet(isPresented: $showExportShareSheet, onDismiss: {
+            exportShareURL = nil
+        }) {
+            if let exportShareURL {
+                ActivityViewController(activityItems: [exportShareURL])
             }
-            .navigationViewStyle(.stack)
         }
         .onChange(of: darkModeIcon) { newVal in
             icon = appInfo.iconIsDarkIcon(newVal)
@@ -745,59 +721,20 @@ struct LCAppBanner : View {
     }
 
     func openCopyToTweaksSelection() {
-        let destinations = buildTweakCopyDestinations()
-        if destinations.isEmpty {
-            errorInfo = "No tweaks folder is available."
+        let selectedItems = binaryExportItems.filter { selectedBinaryExportItemIDs.contains($0.id) }
+        if selectedItems.isEmpty {
+            errorInfo = "Select at least one item first."
             errorShow = true
             return
         }
-        tweakCopyDestinations = destinations
-        selectedTweakCopyDestinationID = destinations.first?.id
-        showCopyToTweaksSheet = true
+        showBinaryExportSheet = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            showCopyToTweaksSheet = true
+        }
     }
 
-    private func buildTweakCopyDestinations() -> [TweakCopyDestination] {
-        let fm = FileManager.default
-        var destinations: [TweakCopyDestination] = []
-        var seen = Set<String>()
-
-        let rootURL = LCPath.tweakPath
-        if !fm.fileExists(atPath: rootURL.path) {
-            try? fm.createDirectory(at: rootURL, withIntermediateDirectories: true)
-        }
-        destinations.append(TweakCopyDestination(id: rootURL.path, title: "Global Tweaks", folderURL: rootURL))
-        seen.insert(rootURL.standardizedFileURL.path)
-
-        if let appFolder = model.uiTweakFolder, !appFolder.isEmpty {
-            let appFolderURL = rootURL.appendingPathComponent(appFolder, isDirectory: true)
-            if !fm.fileExists(atPath: appFolderURL.path) {
-                try? fm.createDirectory(at: appFolderURL, withIntermediateDirectories: true)
-            }
-            let key = appFolderURL.standardizedFileURL.path
-            if seen.insert(key).inserted {
-                destinations.append(TweakCopyDestination(id: appFolderURL.path, title: "\(appFolder) (App)", folderURL: appFolderURL))
-            }
-        }
-
-        for folder in tweakFolders.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }) {
-            let folderURL = rootURL.appendingPathComponent(folder, isDirectory: true)
-            let key = folderURL.standardizedFileURL.path
-            guard seen.insert(key).inserted else {
-                continue
-            }
-            destinations.append(TweakCopyDestination(id: folderURL.path, title: folder, folderURL: folderURL))
-        }
-        return destinations
-    }
-
-    func copySelectedToTweaks() async {
+    func copySelectedToTweaks(destinationFolderURL: URL) async {
         if isCopyingSelectionToTweaks {
-            return
-        }
-        guard let destinationID = selectedTweakCopyDestinationID,
-              let destination = tweakCopyDestinations.first(where: { $0.id == destinationID }) else {
-            errorInfo = "Select a destination tweaks folder."
-            errorShow = true
             return
         }
 
@@ -805,14 +742,14 @@ struct LCAppBanner : View {
         defer { isCopyingSelectionToTweaks = false }
 
         do {
-            let copiedCount = try copySelectedBinaryItems(to: destination.folderURL)
+            let copiedCount = try copySelectedBinaryItems(to: destinationFolderURL)
             showCopyToTweaksSheet = false
             if copiedCount == 0 {
                 errorInfo = "No item was copied."
                 errorShow = true
                 return
             }
-            successInfo = "Copied \(copiedCount) item(s) to \(destination.title)."
+            successInfo = "Copied \(copiedCount) item(s) to \(destinationFolderURL.lastPathComponent)."
             successShow = true
         } catch {
             errorInfo = error.localizedDescription
@@ -1006,18 +943,8 @@ struct LCAppBanner : View {
 
     @MainActor
     func presentShareSheet(for fileURL: URL) {
-        let controller = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-        guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-              let keyWindow = scene.windows.first(where: { $0.isKeyWindow }),
-              var presenter = keyWindow.rootViewController else {
-            return
-        }
-
-        while let presentedViewController = presenter.presentedViewController {
-            presenter = presentedViewController
-        }
-        controller.popoverPresentationController?.sourceView = presenter.view
-        presenter.present(controller, animated: true)
+        exportShareURL = fileURL
+        showExportShareSheet = true
     }
 
     func sanitizedFileStem(_ value: String) -> String {
@@ -1036,25 +963,35 @@ struct LCAppBanner : View {
             throw "Selected container path is not a directory."
         }
 
-        try fm.createDirectory(at: destinationContainerURL, withIntermediateDirectories: true)
+        try copyDirectoryForExport(from: sourceContainerURL, to: destinationContainerURL)
+    }
+
+    func copyDirectoryForExport(from sourceDirectoryURL: URL, to destinationDirectoryURL: URL) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: destinationDirectoryURL, withIntermediateDirectories: true)
+
         let items = try fm.contentsOfDirectory(
-            at: sourceContainerURL,
-            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            at: sourceDirectoryURL,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileResourceTypeKey],
             options: []
         )
 
         for itemURL in items {
-            let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-            // Skip symlinks to avoid exporting broken links (common for `tmp`) that fail archive creation.
-            if values.isSymbolicLink == true {
+            let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileResourceTypeKey])
+            if shouldSkipDataExportItem(values: values) {
                 continue
             }
-            let destinationItemURL = destinationContainerURL.appendingPathComponent(itemURL.lastPathComponent, isDirectory: values.isDirectory ?? false)
+
+            let destinationItemURL = destinationDirectoryURL.appendingPathComponent(itemURL.lastPathComponent, isDirectory: values.isDirectory ?? false)
+            if values.isDirectory == true {
+                try copyDirectoryForExport(from: itemURL, to: destinationItemURL)
+                continue
+            }
 
             do {
                 try fm.copyItem(at: itemURL, to: destinationItemURL)
             } catch {
-                if shouldIgnoreDataExportCopyError(error, sourceItemURL: itemURL, isSymbolicLink: values.isSymbolicLink ?? false) {
+                if shouldIgnoreDataExportCopyError(error, resourceValues: values) {
                     continue
                 }
                 throw error
@@ -1062,15 +999,47 @@ struct LCAppBanner : View {
         }
     }
 
-    func shouldIgnoreDataExportCopyError(_ error: Error, sourceItemURL: URL, isSymbolicLink: Bool) -> Bool {
-        let nsError = error as NSError
-        if !isNoSuchFileError(nsError) {
-            return false
-        }
-        if isSymbolicLink {
+    func shouldSkipDataExportItem(values: URLResourceValues) -> Bool {
+        if values.isSymbolicLink == true {
             return true
         }
-        return sourceItemURL.lastPathComponent == "tmp"
+        if let resourceType = values.fileResourceType {
+            switch resourceType {
+            case .socket, .characterSpecial, .blockSpecial, .namedPipe, .unknown:
+                return true
+            default:
+                break
+            }
+        }
+        return false
+    }
+
+    func shouldIgnoreDataExportCopyError(_ error: Error, resourceValues: URLResourceValues) -> Bool {
+        if shouldSkipDataExportItem(values: resourceValues) {
+            return true
+        }
+        let nsError = error as NSError
+        if !isNoSuchFileError(nsError) {
+            if nsError.domain == NSPOSIXErrorDomain {
+                switch nsError.code {
+                case Int(POSIXErrorCode.EINVAL.rawValue),
+                     Int(POSIXErrorCode.EPERM.rawValue),
+                     Int(POSIXErrorCode.ENOTSUP.rawValue),
+                     Int(POSIXErrorCode.EOPNOTSUPP.rawValue):
+                    return true
+                default:
+                    break
+                }
+            }
+            return false
+        }
+        if resourceValues.isSymbolicLink == true {
+            return true
+        }
+        if let resourceType = resourceValues.fileResourceType {
+            return resourceType == .socket || resourceType == .namedPipe
+        }
+        return false
     }
 
     func isNoSuchFileError(_ nsError: NSError) -> Bool {
