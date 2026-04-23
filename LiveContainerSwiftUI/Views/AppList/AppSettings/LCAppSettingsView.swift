@@ -540,7 +540,7 @@ struct LCAppSettingsView: View {
             Spacer()
             Text(formatStorageSize(bytes))
                 .foregroundStyle(.secondary)
-                .fontWeight(emphasize ? .semibold : .regular)
+                .font(.system(.body, design: .default, weight: emphasize ? .semibold : .regular))
         }
     }
 

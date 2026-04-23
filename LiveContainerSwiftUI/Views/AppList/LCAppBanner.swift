@@ -531,7 +531,7 @@ struct LCAppBanner : View {
     func exportIPA(includeData: Bool) async {
         do {
             let exportURL = try await createExportIPA(includeData: includeData)
-            await presentShareSheet(for: exportURL)
+            presentShareSheet(for: exportURL)
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true
@@ -541,7 +541,7 @@ struct LCAppBanner : View {
     func exportData() async {
         do {
             let exportURL = try await createDataArchive()
-            await presentShareSheet(for: exportURL)
+            presentShareSheet(for: exportURL)
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true
@@ -563,7 +563,7 @@ struct LCAppBanner : View {
         }
     }
 
-    func toggleBinarySelection(for item: AppBinaryExportItem) {
+    private func toggleBinarySelection(for item: AppBinaryExportItem) {
         if selectedBinaryExportItemIDs.contains(item.id) {
             selectedBinaryExportItemIDs.remove(item.id)
         } else {
@@ -587,7 +587,7 @@ struct LCAppBanner : View {
             let archiveURL = try await createSelectedBinaryArchive(selectedItems: selectedItems)
             showBinaryExportSheet = false
             try await Task.sleep(nanoseconds: 200_000_000)
-            await presentShareSheet(for: archiveURL)
+            presentShareSheet(for: archiveURL)
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true
@@ -671,7 +671,7 @@ struct LCAppBanner : View {
         return exportURL
     }
 
-    func listExportableBinaries() throws -> [AppBinaryExportItem] {
+    private func listExportableBinaries() throws -> [AppBinaryExportItem] {
         guard let bundlePath = appInfo.bundlePath() else {
             throw "Unable to read app bundle path."
         }
@@ -718,7 +718,7 @@ struct LCAppBanner : View {
         }
     }
 
-    func createSelectedBinaryArchive(selectedItems: [AppBinaryExportItem]) async throws -> URL {
+    private func createSelectedBinaryArchive(selectedItems: [AppBinaryExportItem]) async throws -> URL {
         guard appInfo.bundlePath() != nil else {
             throw "Unable to read app bundle path."
         }
