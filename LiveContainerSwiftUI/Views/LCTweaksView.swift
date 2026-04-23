@@ -218,37 +218,40 @@ struct LCTweakFolderView : View {
         }
         .navigationTitle(isRoot ? "lc.tabView.tweaks".loc : baseUrl.lastPathComponent)
         .toolbar {
-            if let copyMode {
-                if isRoot {
-                    ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .topBarLeading) {
+                if isCopyMode {
+                    if isRoot, let copyMode {
                         Button("lc.common.close".loc) {
                             copyMode.onClose()
                         }
+                    } else {
+                        EmptyView()
                     }
-                }
-                
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Copy Here") {
-                        copyMode.onCopyHere(baseUrl)
-                    }
-                }
-            } else {
-                ToolbarItem(placement: .topBarLeading) {
+                } else {
                     Button("lc.tweakView.helpButton".loc, systemImage: "questionmark") {
                         helpPresent = true
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if !isTweakSigning && LCSharedUtils.certificatePassword() != nil {
-                        Button {
-                            Task { await signAllTweaks() }
-                        } label: {
-                            Label("sign".loc, systemImage: "signature")
-                        }
+            }
+            
+            ToolbarItem(placement: .topBarTrailing) {
+                if let copyMode {
+                    Button("Copy Here") {
+                        copyMode.onCopyHere(baseUrl)
                     }
-
+                } else if !isTweakSigning && LCSharedUtils.certificatePassword() != nil {
+                    Button {
+                        Task { await signAllTweaks() }
+                    } label: {
+                        Label("sign".loc, systemImage: "signature")
+                    }
+                } else {
+                    EmptyView()
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+            }
+            
+            ToolbarItem(placement: .topBarTrailing) {
+                if !isCopyMode {
                     if !isTweakSigning && !isInstallingFromURL {
                         Menu {
                             Button {
@@ -281,7 +284,8 @@ struct LCTweakFolderView : View {
                     } else {
                         ProgressView().progressViewStyle(.circular)
                     }
-
+                } else {
+                    EmptyView()
                 }
             }
         }
