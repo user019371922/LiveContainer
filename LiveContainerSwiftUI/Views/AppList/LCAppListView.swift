@@ -70,6 +70,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
     
     @State var safariViewOpened = false
     @State var safariViewURL = URL(string: "https://google.com")!
+    @State private var didRunAutoCleanOnStartup = false
     
     @State private var navigateTo : AnyView?
     @State private var isNavigationActive = false
@@ -498,7 +499,43 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         for app in sharedModel.hiddenApps {
             app.delegate = self
         }
+        Task {
+            await autoCleanEnabledAppsOnStartup()
+        }
         didAppear = true
+    }
+    
+    func autoCleanEnabledAppsOnStartup() async {
+        if didRunAutoCleanOnStartup {
+            return
+        }
+        didRunAutoCleanOnStartup = true
+        
+        let appsToConsider = sharedModel.apps + sharedModel.hiddenApps
+        for app in appsToConsider {
+            if !app.uiAutoCleanCacheOnLaunch {
+                continue
+            }
+            guard let bundlePath = app.appInfo.bundlePath() else {
+                continue
+            }
+            
+            let containerTargets = app.uiContainers.map { container in
+                LCAppContainerTarget(url: container.containerURL, needsSecurityScope: container.storageBookMark != nil)
+            }
+            
+            do {
+                let cleanupResult = try await Task.detached(priority: .utility) {
+                    try lcClearAppCacheAndTemp(bundlePath: bundlePath, containerTargets: containerTargets)
+                }.value
+                
+                app.appInfo.clearIconCache()
+                app.appInfo.recordAutoClean(withBytesSaved: cleanupResult.removedBytes)
+                app.objectWillChange.send()
+            } catch {
+                NSLog("[LC] auto-clean failed for %@: %@", app.displayName, error.localizedDescription)
+            }
+        }
     }
     
     

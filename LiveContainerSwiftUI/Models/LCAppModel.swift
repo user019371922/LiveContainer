@@ -110,6 +110,12 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
         }
     }
     
+    @Published var uiAutoCleanCacheOnLaunch: Bool {
+        didSet {
+            appInfo.autoCleanCacheOnLaunch = uiAutoCleanCacheOnLaunch
+        }
+    }
+    
     @Published var uiIsMultitaskModeSpecificed : MultitaskSpecified {
         didSet {
             appInfo.multitaskSpecified = uiIsMultitaskModeSpecificed;
@@ -179,6 +185,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
         self.jitLaunchScriptJs = appInfo.jitLaunchScriptJs
         self.uiSpoofSDKVersion = appInfo.spoofSDKVersion
         self.uiRemark = appInfo.remark ?? ""
+        self.uiAutoCleanCacheOnLaunch = appInfo.autoCleanCacheOnLaunch
 #if is32BitSupported
         self.uiIs32bit = appInfo.is32bit
 #endif

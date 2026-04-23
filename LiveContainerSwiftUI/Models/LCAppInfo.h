@@ -45,6 +45,9 @@ typedef NS_ENUM(NSInteger, MultitaskSpecified){
 @property NSDate* lastLaunched;
 @property NSDate* installationDate;
 @property NSString* remark;
+@property bool autoCleanCacheOnLaunch;
+@property NSDate* lastAutoCleanDate;
+@property long long autoCleanTotalBytesSaved;
 #if is32BitSupported
 @property bool is32bit;
 #endif
@@ -67,4 +70,8 @@ typedef NS_ENUM(NSInteger, MultitaskSpecified){
 - (NSDictionary *)generateWebClipConfigWithContainerId:(NSString*)containerId iconStyle:(GeneratedIconStyle)style;
 - (void)save;
 - (void)patchExecAndSignIfNeedWithCompletionHandler:(void(^)(bool success, NSString* errorInfo))completetionHandler progressHandler:(void(^)(NSProgress* progress))progressHandler  forceSign:(BOOL)forceSign;
+- (void)recordAutoCleanWithBytesSaved:(long long)bytesSaved;
+- (long long)autoCleanBytesSavedInLastDays:(NSInteger)days;
+- (long long)lastAutoCleanBytesSaved;
+- (void)resetAutoCleanStats;
 @end

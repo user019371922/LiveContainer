@@ -17,6 +17,18 @@ protocol LCAppBannerDelegate {
     func promptForGeneratedIconStyle() async -> GeneratedIconStyle?
 }
 
+private enum AppBinaryExportKind: String {
+    case dylib = "Dylib"
+    case framework = "Framework"
+}
+
+private struct AppBinaryExportItem: Identifiable, Hashable {
+    let id: String
+    let url: URL
+    let relativePath: String
+    let kind: AppBinaryExportKind
+}
+
 struct LCAppBanner : View {
     @State var appInfo: LCAppInfo
     var delegate: LCAppBannerDelegate
@@ -34,6 +46,11 @@ struct LCAppBanner : View {
     
     @State private var errorShow = false
     @State private var errorInfo = ""
+
+    @State private var showBinaryExportSheet = false
+    @State private var binaryExportItems: [AppBinaryExportItem] = []
+    @State private var selectedBinaryExportItemIDs: Set<String> = []
+    @State private var isExportingBinarySelection = false
     
     @AppStorage("dynamicColors", store: LCUtils.appGroupUserDefault) var dynamicColors = true
     @AppStorage("darkModeIcon", store: LCUtils.appGroupUserDefault) var darkModeIcon = false
@@ -229,6 +246,61 @@ struct LCAppBanner : View {
         } message: {
             Text(errorInfo)
         }
+        .sheet(isPresented: $showBinaryExportSheet) {
+            NavigationView {
+                List(binaryExportItems) { item in
+                    Button {
+                        toggleBinarySelection(for: item)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: selectedBinaryExportItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(selectedBinaryExportItemIDs.contains(item.id) ? Color.accentColor : Color.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.relativePath)
+                                    .font(.system(.body, design: .monospaced))
+                                Text(item.kind.rawValue)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .navigationTitle("Export Dylibs & Frameworks")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showBinaryExportSheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        if !binaryExportItems.isEmpty {
+                            Button(selectedBinaryExportItemIDs.count == binaryExportItems.count ? "Unselect All" : "Select All") {
+                                if selectedBinaryExportItemIDs.count == binaryExportItems.count {
+                                    selectedBinaryExportItemIDs.removeAll()
+                                } else {
+                                    selectedBinaryExportItemIDs = Set(binaryExportItems.map(\.id))
+                                }
+                            }
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        if isExportingBinarySelection {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                        } else {
+                            Button("Export") {
+                                Task { await exportSelectedDylibsAndFrameworks() }
+                            }
+                            .disabled(selectedBinaryExportItemIDs.isEmpty)
+                        }
+                    }
+                }
+            }
+            .navigationViewStyle(.stack)
+        }
         .onChange(of: darkModeIcon) { newVal in
             icon = appInfo.iconIsDarkIcon(newVal)
             mainColor = extractMainHueColor()
@@ -289,6 +361,41 @@ struct LCAppBanner : View {
                                    image: UIImage(systemName: "plus.app"),
                                    children: subMenuActions)
         sectionChildren.append(addToHomeMenu)
+
+        let dataExportDisabled: UIMenuElement.Attributes = model.uiSelectedContainer == nil ? [.disabled] : []
+        let exportMenu = UIMenu(
+            title: "Export",
+            image: UIImage(systemName: "square.and.arrow.up"),
+            children: [
+                UIAction(
+                    title: "Export IPA",
+                    image: UIImage(systemName: "shippingbox")
+                ) { _ in
+                    Task { await exportIPA(includeData: false) }
+                },
+                UIAction(
+                    title: "Export Data",
+                    image: UIImage(systemName: "folder.zip"),
+                    attributes: dataExportDisabled
+                ) { _ in
+                    Task { await exportData() }
+                },
+                UIAction(
+                    title: "Export IPA + Data",
+                    image: UIImage(systemName: "square.and.arrow.up.on.square"),
+                    attributes: dataExportDisabled
+                ) { _ in
+                    Task { await exportIPA(includeData: true) }
+                },
+                UIAction(
+                    title: "Export Dylibs & Frameworks",
+                    image: UIImage(systemName: "list.bullet.rectangle")
+                ) { _ in
+                    openDylibAndFrameworkExportSelection()
+                }
+            ]
+        )
+        sectionChildren.append(exportMenu)
 
         // Settings
         let settingsAction = UIAction(title: "lc.tabView.settings".loc, image: UIImage(systemName: "gear")) { _ in
@@ -419,6 +526,270 @@ struct LCAppBanner : View {
         let img = appInfo.generateLiveContainerWrappedIcon(with: style)!
         self.saveIconFile = ImageDocument(uiImage: img)
         self.saveIconExporterShow = true
+    }
+
+    func exportIPA(includeData: Bool) async {
+        do {
+            let exportURL = try await createExportIPA(includeData: includeData)
+            await presentShareSheet(for: exportURL)
+        } catch {
+            errorInfo = error.localizedDescription
+            errorShow = true
+        }
+    }
+
+    func exportData() async {
+        do {
+            let exportURL = try await createDataArchive()
+            await presentShareSheet(for: exportURL)
+        } catch {
+            errorInfo = error.localizedDescription
+            errorShow = true
+        }
+    }
+
+    func openDylibAndFrameworkExportSelection() {
+        do {
+            let items = try listExportableBinaries()
+            if items.isEmpty {
+                throw "No .dylib or .framework items were found in this app bundle."
+            }
+            binaryExportItems = items
+            selectedBinaryExportItemIDs = Set(items.map(\.id))
+            showBinaryExportSheet = true
+        } catch {
+            errorInfo = error.localizedDescription
+            errorShow = true
+        }
+    }
+
+    func toggleBinarySelection(for item: AppBinaryExportItem) {
+        if selectedBinaryExportItemIDs.contains(item.id) {
+            selectedBinaryExportItemIDs.remove(item.id)
+        } else {
+            selectedBinaryExportItemIDs.insert(item.id)
+        }
+    }
+
+    func exportSelectedDylibsAndFrameworks() async {
+        if isExportingBinarySelection {
+            return
+        }
+
+        isExportingBinarySelection = true
+        defer { isExportingBinarySelection = false }
+
+        do {
+            let selectedItems = binaryExportItems.filter { selectedBinaryExportItemIDs.contains($0.id) }
+            if selectedItems.isEmpty {
+                throw "Select at least one item to export."
+            }
+            let archiveURL = try await createSelectedBinaryArchive(selectedItems: selectedItems)
+            showBinaryExportSheet = false
+            try await Task.sleep(nanoseconds: 200_000_000)
+            await presentShareSheet(for: archiveURL)
+        } catch {
+            errorInfo = error.localizedDescription
+            errorShow = true
+        }
+    }
+
+    func createExportIPA(includeData: Bool) async throws -> URL {
+        guard let bundlePath = appInfo.bundlePath() else {
+            throw "Unable to read app bundle path."
+        }
+
+        let fm = FileManager.default
+        let stagingRoot = fm.temporaryDirectory.appendingPathComponent("LCAppExport-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: stagingRoot) }
+
+        try fm.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
+        let payloadDir = stagingRoot.appendingPathComponent("Payload", isDirectory: true)
+        try fm.createDirectory(at: payloadDir, withIntermediateDirectories: true)
+
+        let sourceAppURL = URL(fileURLWithPath: bundlePath, isDirectory: true)
+        let destinationAppURL = payloadDir.appendingPathComponent(sourceAppURL.lastPathComponent, isDirectory: true)
+        try fm.copyItem(at: sourceAppURL, to: destinationAppURL)
+
+        if includeData {
+            guard let container = model.uiSelectedContainer else {
+                throw "Select a container before exporting app data."
+            }
+            let dataURL = container.containerURL
+            let needsSecurityAccess = container.storageBookMark != nil
+            if needsSecurityAccess && !dataURL.startAccessingSecurityScopedResource() {
+                throw "Unable to access selected external container."
+            }
+            defer {
+                if needsSecurityAccess {
+                    dataURL.stopAccessingSecurityScopedResource()
+                }
+            }
+            guard fm.fileExists(atPath: dataURL.path) else {
+                throw "Selected container data does not exist."
+            }
+            let destinationDataURL = destinationAppURL.appendingPathComponent("LCUserData", isDirectory: true)
+            try fm.copyItem(at: dataURL, to: destinationDataURL)
+        }
+
+        let appName = sanitizedFileStem(appInfo.displayName() ?? "App")
+        let fileName = includeData ? "\(appName)-with-data.ipa" : "\(appName).ipa"
+        let exportURL = fm.temporaryDirectory.appendingPathComponent(fileName)
+        try? fm.removeItem(at: exportURL)
+
+        try await zipDirectory(sourceURL: stagingRoot, destinationURL: exportURL)
+        return exportURL
+    }
+
+    func createDataArchive() async throws -> URL {
+        guard let container = model.uiSelectedContainer else {
+            throw "Select a container before exporting data."
+        }
+
+        let containerURL = container.containerURL
+        let needsSecurityAccess = container.storageBookMark != nil
+        if needsSecurityAccess && !containerURL.startAccessingSecurityScopedResource() {
+            throw "Unable to access selected external container."
+        }
+        defer {
+            if needsSecurityAccess {
+                containerURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: containerURL.path) else {
+            throw "Selected container data does not exist."
+        }
+
+        let appName = sanitizedFileStem(appInfo.displayName() ?? "App")
+        let containerName = sanitizedFileStem(container.name)
+        let exportURL = fm.temporaryDirectory.appendingPathComponent("\(appName)-\(containerName)-data.zip")
+        try? fm.removeItem(at: exportURL)
+
+        try await zipDirectory(sourceURL: containerURL, destinationURL: exportURL)
+        return exportURL
+    }
+
+    func listExportableBinaries() throws -> [AppBinaryExportItem] {
+        guard let bundlePath = appInfo.bundlePath() else {
+            throw "Unable to read app bundle path."
+        }
+        let rootURL = URL(fileURLWithPath: bundlePath, isDirectory: true)
+        let fm = FileManager.default
+
+        guard let enumerator = fm.enumerator(
+            at: rootURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        var items: [AppBinaryExportItem] = []
+        var seenPaths = Set<String>()
+        let rootPrefix = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
+
+        for case let itemURL as URL in enumerator {
+            let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey])
+            let isDirectory = values.isDirectory ?? false
+
+            if isDirectory && itemURL.pathExtension.lowercased() == "framework" {
+                let relativePath = itemURL.path.hasPrefix(rootPrefix) ? String(itemURL.path.dropFirst(rootPrefix.count)) : itemURL.lastPathComponent
+                if seenPaths.insert(relativePath).inserted {
+                    items.append(AppBinaryExportItem(id: "framework:\(relativePath)", url: itemURL, relativePath: relativePath, kind: .framework))
+                }
+                continue
+            }
+
+            if !isDirectory && itemURL.pathExtension.lowercased() == "dylib" {
+                let relativePath = itemURL.path.hasPrefix(rootPrefix) ? String(itemURL.path.dropFirst(rootPrefix.count)) : itemURL.lastPathComponent
+                if seenPaths.insert(relativePath).inserted {
+                    items.append(AppBinaryExportItem(id: "dylib:\(relativePath)", url: itemURL, relativePath: relativePath, kind: .dylib))
+                }
+            }
+        }
+
+        return items.sorted { lhs, rhs in
+            if lhs.kind == rhs.kind {
+                return lhs.relativePath.localizedCaseInsensitiveCompare(rhs.relativePath) == .orderedAscending
+            }
+            return lhs.kind.rawValue < rhs.kind.rawValue
+        }
+    }
+
+    func createSelectedBinaryArchive(selectedItems: [AppBinaryExportItem]) async throws -> URL {
+        guard appInfo.bundlePath() != nil else {
+            throw "Unable to read app bundle path."
+        }
+
+        let fm = FileManager.default
+        let stagingRoot = fm.temporaryDirectory.appendingPathComponent("LCBinaryExport-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: stagingRoot) }
+
+        let appName = sanitizedFileStem(appInfo.displayName() ?? "App")
+        let contentRoot = stagingRoot.appendingPathComponent("\(appName)-dylibs-frameworks", isDirectory: true)
+        try fm.createDirectory(at: contentRoot, withIntermediateDirectories: true)
+
+        for item in selectedItems {
+            let destinationURL = contentRoot.appendingPathComponent(item.relativePath, isDirectory: item.kind == .framework)
+            try fm.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.removeItem(at: destinationURL)
+            try fm.copyItem(at: item.url, to: destinationURL)
+        }
+
+        let archiveURL = fm.temporaryDirectory.appendingPathComponent("\(appName)-dylibs-frameworks.zip")
+        try? fm.removeItem(at: archiveURL)
+        try await zipDirectory(sourceURL: contentRoot, destinationURL: archiveURL)
+        return archiveURL
+    }
+
+    func zipDirectory(sourceURL: URL, destinationURL: URL) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            let coordinator = NSFileCoordinator()
+            var coordinationError: NSError?
+
+            coordinator.coordinate(readingItemAt: sourceURL, options: [.forUploading], error: &coordinationError) { zippedURL in
+                do {
+                    if FileManager.default.fileExists(atPath: destinationURL.path) {
+                        try FileManager.default.removeItem(at: destinationURL)
+                    }
+                    try FileManager.default.copyItem(at: zippedURL, to: destinationURL)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+
+            if let coordinationError {
+                continuation.resume(throwing: coordinationError)
+            }
+        }
+    }
+
+    @MainActor
+    func presentShareSheet(for fileURL: URL) {
+        let controller = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+              let keyWindow = scene.windows.first(where: { $0.isKeyWindow }),
+              var presenter = keyWindow.rootViewController else {
+            return
+        }
+
+        while let presentedViewController = presenter.presentedViewController {
+            presenter = presentedViewController
+        }
+        controller.popoverPresentationController?.sourceView = presenter.view
+        presenter.present(controller, animated: true)
+    }
+
+    func sanitizedFileStem(_ value: String) -> String {
+        let invalidCharacters = CharacterSet(charactersIn: "/\\:?%*|\"<>")
+        let cleaned = value
+            .components(separatedBy: invalidCharacters)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "Export" : cleaned
     }
     
     func extractMainHueColor() -> Color {
