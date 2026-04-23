@@ -29,6 +29,11 @@ private struct AppBinaryExportItem: Identifiable, Hashable, Sendable {
     let kind: AppBinaryExportKind
 }
 
+private struct AppExportShareItem: Identifiable {
+    let id = UUID()
+    let fileURL: URL
+}
+
 private func lcListExportableBinaries(bundlePath: String) throws -> [AppBinaryExportItem] {
     let rootURL = URL(fileURLWithPath: bundlePath, isDirectory: true)
     let fm = FileManager.default
@@ -100,8 +105,7 @@ struct LCAppBanner : View {
     @State private var isExportingBinarySelection = false
     @State private var showCopyToTweaksSheet = false
     @State private var isCopyingSelectionToTweaks = false
-    @State private var showExportShareSheet = false
-    @State private var exportShareURL: URL?
+    @State private var exportShareItem: AppExportShareItem?
     
     @AppStorage("dynamicColors", store: LCUtils.appGroupUserDefault) var dynamicColors = true
     @AppStorage("darkModeIcon", store: LCUtils.appGroupUserDefault) var darkModeIcon = false
@@ -396,12 +400,8 @@ struct LCAppBanner : View {
                 }
             )
         }
-        .sheet(isPresented: $showExportShareSheet, onDismiss: {
-            exportShareURL = nil
-        }) {
-            if let exportShareURL {
-                ActivityViewController(activityItems: [exportShareURL])
-            }
+        .sheet(item: $exportShareItem) { item in
+            ActivityViewController(activityItems: [item.fileURL])
         }
         .onChange(of: darkModeIcon) { newVal in
             icon = appInfo.iconIsDarkIcon(newVal)
@@ -943,8 +943,7 @@ struct LCAppBanner : View {
 
     @MainActor
     func presentShareSheet(for fileURL: URL) {
-        exportShareURL = fileURL
-        showExportShareSheet = true
+        exportShareItem = AppExportShareItem(fileURL: fileURL)
     }
 
     func sanitizedFileStem(_ value: String) -> String {
