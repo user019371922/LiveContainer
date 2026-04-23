@@ -52,6 +52,10 @@ struct LCPath {
     }
 }
 
+enum LCUserDefaultsKey {
+    static let lastOpenedTweakFolderPath = "LCLastOpenedTweakFolderPath"
+}
+
 class SharedModel: ObservableObject {
     @Published var selectedTab: LCTabIdentifier = .apps
     @Published var deepLink: URL?

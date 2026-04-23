@@ -959,12 +959,19 @@ func lcCalculateItemSize(at url: URL) throws -> Int64 {
     ]
 
     if !isDirectory.boolValue {
-        let values = try url.resourceValues(forKeys: resourceKeys)
-        guard values.isRegularFile == true else {
-            return 0
+        do {
+            let values = try url.resourceValues(forKeys: resourceKeys)
+            guard values.isRegularFile == true else {
+                return 0
+            }
+            let fileSize = values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0
+            return Int64(fileSize)
+        } catch {
+            if lcIsNoSuchFileError(error) {
+                return 0
+            }
+            throw error
         }
-        let fileSize = values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0
-        return Int64(fileSize)
     }
 
     guard let enumerator = fm.enumerator(
@@ -978,12 +985,19 @@ func lcCalculateItemSize(at url: URL) throws -> Int64 {
 
     var totalSize: Int64 = 0
     for case let fileURL as URL in enumerator {
-        let values = try fileURL.resourceValues(forKeys: resourceKeys)
-        guard values.isRegularFile == true else {
-            continue
+        do {
+            let values = try fileURL.resourceValues(forKeys: resourceKeys)
+            guard values.isRegularFile == true else {
+                continue
+            }
+            let fileSize = values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0
+            totalSize += Int64(fileSize)
+        } catch {
+            if lcIsNoSuchFileError(error) {
+                continue
+            }
+            throw error
         }
-        let fileSize = values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0
-        totalSize += Int64(fileSize)
     }
     return totalSize
 }
@@ -1027,15 +1041,37 @@ func lcClearDirectoryContentsIfExists(at directoryURL: URL) throws -> LCCacheCle
     }
     guard isDirectory.boolValue else {
         let removedSize = (try? lcCalculateItemSize(at: directoryURL)) ?? 0
-        try fm.removeItem(at: directoryURL)
+        do {
+            try fm.removeItem(at: directoryURL)
+        } catch {
+            if lcIsNoSuchFileError(error) {
+                return .empty
+            }
+            throw error
+        }
         return LCCacheCleanupResult(removedItemCount: 1, removedBytes: removedSize)
     }
 
-    let items = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
+    let items: [URL]
+    do {
+        items = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
+    } catch {
+        if lcIsNoSuchFileError(error) {
+            return .empty
+        }
+        throw error
+    }
     var removedBytes: Int64 = 0
     for item in items {
         removedBytes += (try? lcCalculateItemSize(at: item)) ?? 0
-        try fm.removeItem(at: item)
+        do {
+            try fm.removeItem(at: item)
+        } catch {
+            if lcIsNoSuchFileError(error) {
+                continue
+            }
+            throw error
+        }
     }
     return LCCacheCleanupResult(removedItemCount: items.count, removedBytes: removedBytes)
 }
@@ -1046,8 +1082,26 @@ func lcRemoveItemIfExists(at url: URL) throws -> LCCacheCleanupResult {
         return .empty
     }
     let removedSize = (try? lcCalculateItemSize(at: url)) ?? 0
-    try fm.removeItem(at: url)
+    do {
+        try fm.removeItem(at: url)
+    } catch {
+        if lcIsNoSuchFileError(error) {
+            return .empty
+        }
+        throw error
+    }
     return LCCacheCleanupResult(removedItemCount: 1, removedBytes: removedSize)
+}
+
+private func lcIsNoSuchFileError(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSCocoaErrorDomain {
+        return nsError.code == NSFileNoSuchFileError || nsError.code == NSFileReadNoSuchFileError
+    }
+    if nsError.domain == NSPOSIXErrorDomain {
+        return nsError.code == Int(POSIXErrorCode.ENOENT.rawValue)
+    }
+    return false
 }
 
 

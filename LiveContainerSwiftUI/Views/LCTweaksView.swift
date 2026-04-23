@@ -198,6 +198,7 @@ struct LCTweakFolderView : View {
             reloadTweakItems()
             disabledTweaks = Self.loadDisabledTweaks(baseUrl)
             syncRootTweakFoldersIfNeeded()
+            LCUtils.appGroupUserDefault.set(baseUrl.path, forKey: LCUserDefaultsKey.lastOpenedTweakFolderPath)
         }
         .navigationTitle(isRoot ? "lc.tabView.tweaks".loc : baseUrl.lastPathComponent)
         .toolbar {

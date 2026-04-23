@@ -17,16 +17,22 @@ protocol LCAppBannerDelegate {
     func promptForGeneratedIconStyle() async -> GeneratedIconStyle?
 }
 
-private enum AppBinaryExportKind: String {
+private enum AppBinaryExportKind: String, Sendable {
     case dylib = "Dylib"
     case framework = "Framework"
 }
 
-private struct AppBinaryExportItem: Identifiable, Hashable {
+private struct AppBinaryExportItem: Identifiable, Hashable, Sendable {
     let id: String
     let url: URL
     let relativePath: String
     let kind: AppBinaryExportKind
+}
+
+private struct TweakCopyDestination: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let folderURL: URL
 }
 
 struct LCAppBanner : View {
@@ -46,11 +52,18 @@ struct LCAppBanner : View {
     
     @State private var errorShow = false
     @State private var errorInfo = ""
+    @State private var successShow = false
+    @State private var successInfo = ""
 
     @State private var showBinaryExportSheet = false
     @State private var binaryExportItems: [AppBinaryExportItem] = []
     @State private var selectedBinaryExportItemIDs: Set<String> = []
+    @State private var isBinaryExportListLoading = false
     @State private var isExportingBinarySelection = false
+    @State private var showCopyToTweaksSheet = false
+    @State private var tweakCopyDestinations: [TweakCopyDestination] = []
+    @State private var selectedTweakCopyDestinationID: String?
+    @State private var isCopyingSelectionToTweaks = false
     
     @AppStorage("dynamicColors", store: LCUtils.appGroupUserDefault) var dynamicColors = true
     @AppStorage("darkModeIcon", store: LCUtils.appGroupUserDefault) var darkModeIcon = false
@@ -246,29 +259,51 @@ struct LCAppBanner : View {
         } message: {
             Text(errorInfo)
         }
+        .alert("lc.common.success".loc, isPresented: $successShow){
+            Button("lc.common.ok".loc, action: {
+            })
+        } message: {
+            Text(successInfo)
+        }
         .sheet(isPresented: $showBinaryExportSheet) {
             NavigationView {
-                List(binaryExportItems) { item in
-                    Button {
-                        toggleBinarySelection(for: item)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: selectedBinaryExportItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(selectedBinaryExportItemIDs.contains(item.id) ? Color.accentColor : Color.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.relativePath)
-                                    .font(.system(.body, design: .monospaced))
-                                Text(item.kind.rawValue)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
+                List {
+                    if isBinaryExportListLoading {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                            Text("Loading binaries...")
+                                .foregroundStyle(.secondary)
                         }
-                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    } else if binaryExportItems.isEmpty {
+                        Text("No .dylib or .framework was found in this app bundle.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(binaryExportItems) { item in
+                            Button {
+                                toggleBinarySelection(for: item)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: selectedBinaryExportItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(selectedBinaryExportItemIDs.contains(item.id) ? Color.accentColor : Color.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.relativePath)
+                                            .font(.system(.body, design: .monospaced))
+                                        Text(item.kind.rawValue)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
-                .navigationTitle("Export Dylibs & Frameworks")
+                .navigationTitle("Export Binaries")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") {
@@ -276,7 +311,7 @@ struct LCAppBanner : View {
                         }
                     }
                     ToolbarItem(placement: .navigationBarLeading) {
-                        if !binaryExportItems.isEmpty {
+                        if !isBinaryExportListLoading && !binaryExportItems.isEmpty {
                             Button(selectedBinaryExportItemIDs.count == binaryExportItems.count ? "Unselect All" : "Select All") {
                                 if selectedBinaryExportItemIDs.count == binaryExportItems.count {
                                     selectedBinaryExportItemIDs.removeAll()
@@ -294,8 +329,55 @@ struct LCAppBanner : View {
                             Button("Export") {
                                 Task { await exportSelectedDylibsAndFrameworks() }
                             }
-                            .disabled(selectedBinaryExportItemIDs.isEmpty)
+                            .disabled(isBinaryExportListLoading || selectedBinaryExportItemIDs.isEmpty)
                         }
+                    }
+                    ToolbarItem(placement: .bottomBar) {
+                        if isCopyingSelectionToTweaks {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                        } else {
+                            Button("Copy to Tweaks") {
+                                openCopyToTweaksSelection()
+                            }
+                            .disabled(isBinaryExportListLoading || selectedBinaryExportItemIDs.isEmpty)
+                        }
+                    }
+                }
+            }
+            .navigationViewStyle(.stack)
+        }
+        .sheet(isPresented: $showCopyToTweaksSheet) {
+            NavigationView {
+                List {
+                    ForEach(tweakCopyDestinations) { destination in
+                        Button {
+                            selectedTweakCopyDestinationID = destination.id
+                        } label: {
+                            HStack {
+                                Image(systemName: selectedTweakCopyDestinationID == destination.id ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(selectedTweakCopyDestinationID == destination.id ? Color.accentColor : Color.secondary)
+                                Text(destination.title)
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .navigationTitle("Copy to Tweaks")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showCopyToTweaksSheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Copy") {
+                            Task { await copySelectedToTweaks() }
+                        }
+                        .disabled(selectedTweakCopyDestinationID == nil || isCopyingSelectionToTweaks)
                     }
                 }
             }
@@ -375,7 +457,7 @@ struct LCAppBanner : View {
                 },
                 UIAction(
                     title: "Export Data",
-                    image: UIImage(systemName: "folder.zip"),
+                    image: UIImage(systemName: "folder.fill"),
                     attributes: dataExportDisabled
                 ) { _ in
                     Task { await exportData() }
@@ -531,7 +613,9 @@ struct LCAppBanner : View {
     func exportIPA(includeData: Bool) async {
         do {
             let exportURL = try await createExportIPA(includeData: includeData)
-            presentShareSheet(for: exportURL)
+            await MainActor.run {
+                presentShareSheet(for: exportURL)
+            }
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true
@@ -541,7 +625,9 @@ struct LCAppBanner : View {
     func exportData() async {
         do {
             let exportURL = try await createDataArchive()
-            presentShareSheet(for: exportURL)
+            await MainActor.run {
+                presentShareSheet(for: exportURL)
+            }
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true
@@ -549,17 +635,35 @@ struct LCAppBanner : View {
     }
 
     func openDylibAndFrameworkExportSelection() {
-        do {
-            let items = try listExportableBinaries()
-            if items.isEmpty {
-                throw "No .dylib or .framework items were found in this app bundle."
-            }
-            binaryExportItems = items
-            selectedBinaryExportItemIDs = Set(items.map(\.id))
-            showBinaryExportSheet = true
-        } catch {
-            errorInfo = error.localizedDescription
+        guard let bundlePath = appInfo.bundlePath() else {
+            errorInfo = "Unable to read app bundle path."
             errorShow = true
+            return
+        }
+
+        showBinaryExportSheet = true
+        isBinaryExportListLoading = true
+        binaryExportItems = []
+        selectedBinaryExportItemIDs.removeAll()
+
+        Task {
+            do {
+                let items = try await Task.detached(priority: .userInitiated) {
+                    try LCAppBanner.listExportableBinaries(bundlePath: bundlePath)
+                }.value
+                await MainActor.run {
+                    binaryExportItems = items
+                    selectedBinaryExportItemIDs = Set(items.map(\.id))
+                    isBinaryExportListLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    isBinaryExportListLoading = false
+                    errorInfo = error.localizedDescription
+                    errorShow = true
+                    showBinaryExportSheet = false
+                }
+            }
         }
     }
 
@@ -587,10 +691,161 @@ struct LCAppBanner : View {
             let archiveURL = try await createSelectedBinaryArchive(selectedItems: selectedItems)
             showBinaryExportSheet = false
             try await Task.sleep(nanoseconds: 200_000_000)
-            presentShareSheet(for: archiveURL)
+            await MainActor.run {
+                presentShareSheet(for: archiveURL)
+            }
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true
+        }
+    }
+
+    func openCopyToTweaksSelection() {
+        let destinations = buildTweakCopyDestinations()
+        if destinations.isEmpty {
+            errorInfo = "No tweaks folder is available."
+            errorShow = true
+            return
+        }
+        tweakCopyDestinations = destinations
+        selectedTweakCopyDestinationID = preferredTweakCopyDestinationID(in: destinations)
+        showCopyToTweaksSheet = true
+    }
+
+    func buildTweakCopyDestinations() -> [TweakCopyDestination] {
+        let fm = FileManager.default
+        var destinations: [TweakCopyDestination] = []
+        var seen = Set<String>()
+
+        let rootURL = LCPath.tweakPath
+        if !fm.fileExists(atPath: rootURL.path) {
+            try? fm.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        }
+        destinations.append(TweakCopyDestination(id: rootURL.path, title: "Global Tweaks", folderURL: rootURL))
+        seen.insert(rootURL.standardizedFileURL.path)
+
+        if let appFolder = model.uiTweakFolder, !appFolder.isEmpty {
+            let appFolderURL = rootURL.appendingPathComponent(appFolder, isDirectory: true)
+            if !fm.fileExists(atPath: appFolderURL.path) {
+                try? fm.createDirectory(at: appFolderURL, withIntermediateDirectories: true)
+            }
+            let key = appFolderURL.standardizedFileURL.path
+            if seen.insert(key).inserted {
+                destinations.append(TweakCopyDestination(id: appFolderURL.path, title: "\(appFolder) (App)", folderURL: appFolderURL))
+            }
+        }
+
+        for folder in tweakFolders.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }) {
+            let folderURL = rootURL.appendingPathComponent(folder, isDirectory: true)
+            let key = folderURL.standardizedFileURL.path
+            guard seen.insert(key).inserted else {
+                continue
+            }
+            destinations.append(TweakCopyDestination(id: folderURL.path, title: folder, folderURL: folderURL))
+        }
+
+        if let lastPath = LCUtils.appGroupUserDefault.string(forKey: LCUserDefaultsKey.lastOpenedTweakFolderPath), !lastPath.isEmpty {
+            let lastURL = URL(fileURLWithPath: lastPath, isDirectory: true)
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: lastURL.path, isDirectory: &isDir), isDir.boolValue, lastURL.path.hasPrefix(rootURL.path) {
+                let key = lastURL.standardizedFileURL.path
+                if seen.insert(key).inserted {
+                    destinations.append(TweakCopyDestination(id: lastURL.path, title: "\(lastURL.lastPathComponent) (Last Opened)", folderURL: lastURL))
+                }
+            }
+        }
+
+        return destinations
+    }
+
+    func preferredTweakCopyDestinationID(in destinations: [TweakCopyDestination]) -> String? {
+        if let lastPath = LCUtils.appGroupUserDefault.string(forKey: LCUserDefaultsKey.lastOpenedTweakFolderPath), !lastPath.isEmpty,
+           destinations.contains(where: { $0.id == lastPath }) {
+            return lastPath
+        }
+        if let appFolder = model.uiTweakFolder, !appFolder.isEmpty {
+            let appFolderPath = LCPath.tweakPath.appendingPathComponent(appFolder, isDirectory: true).path
+            if destinations.contains(where: { $0.id == appFolderPath }) {
+                return appFolderPath
+            }
+        }
+        return destinations.first?.id
+    }
+
+    func copySelectedToTweaks() async {
+        if isCopyingSelectionToTweaks {
+            return
+        }
+        guard let destinationID = selectedTweakCopyDestinationID,
+              let destination = tweakCopyDestinations.first(where: { $0.id == destinationID }) else {
+            errorInfo = "Select a destination tweaks folder."
+            errorShow = true
+            return
+        }
+
+        isCopyingSelectionToTweaks = true
+        defer { isCopyingSelectionToTweaks = false }
+
+        do {
+            let copiedCount = try copySelectedBinaryItems(to: destination.folderURL)
+            showCopyToTweaksSheet = false
+            if copiedCount == 0 {
+                errorInfo = "No item was copied."
+                errorShow = true
+                return
+            }
+            successInfo = "Copied \(copiedCount) item(s) to \(destination.title)."
+            successShow = true
+        } catch {
+            errorInfo = error.localizedDescription
+            errorShow = true
+        }
+    }
+
+    func copySelectedBinaryItems(to destinationFolderURL: URL) throws -> Int {
+        let fm = FileManager.default
+        try fm.createDirectory(at: destinationFolderURL, withIntermediateDirectories: true)
+
+        let selectedItems = binaryExportItems.filter { selectedBinaryExportItemIDs.contains($0.id) }
+        if selectedItems.isEmpty {
+            return 0
+        }
+
+        var copiedCount = 0
+        for item in selectedItems {
+            let proposedURL = destinationFolderURL.appendingPathComponent(item.url.lastPathComponent, isDirectory: item.kind == .framework)
+            let destinationURL = nextAvailableCopyURL(for: proposedURL)
+            try fm.copyItem(at: item.url, to: destinationURL)
+            copiedCount += 1
+        }
+
+        return copiedCount
+    }
+
+    func nextAvailableCopyURL(for proposedURL: URL) -> URL {
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: proposedURL.path) {
+            return proposedURL
+        }
+
+        let pathExtension = proposedURL.pathExtension
+        let baseName = proposedURL.deletingPathExtension().lastPathComponent
+        let parentURL = proposedURL.deletingLastPathComponent()
+
+        var index = 2
+        while true {
+            let candidateName: String
+            if pathExtension.isEmpty {
+                candidateName = "\(baseName)-\(index)"
+            } else {
+                candidateName = "\(baseName)-\(index).\(pathExtension)"
+            }
+
+            let candidateURL = parentURL.appendingPathComponent(candidateName, isDirectory: pathExtension == "framework")
+            if !fm.fileExists(atPath: candidateURL.path) {
+                return candidateURL
+            }
+            index += 1
         }
     }
 
@@ -629,7 +884,7 @@ struct LCAppBanner : View {
                 throw "Selected container data does not exist."
             }
             let destinationDataURL = destinationAppURL.appendingPathComponent("LCUserData", isDirectory: true)
-            try fm.copyItem(at: dataURL, to: destinationDataURL)
+            try copyContainerDataForExport(from: dataURL, to: destinationDataURL)
         }
 
         let appName = sanitizedFileStem(appInfo.displayName() ?? "App")
@@ -661,20 +916,28 @@ struct LCAppBanner : View {
         guard fm.fileExists(atPath: containerURL.path) else {
             throw "Selected container data does not exist."
         }
+        var sourceIsDirectory: ObjCBool = false
+        guard fm.fileExists(atPath: containerURL.path, isDirectory: &sourceIsDirectory), sourceIsDirectory.boolValue else {
+            throw "Selected container path is not a directory."
+        }
+
+        let stagingRoot = fm.temporaryDirectory.appendingPathComponent("LCDataExport-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: stagingRoot) }
+        try fm.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
 
         let appName = sanitizedFileStem(appInfo.displayName() ?? "App")
         let containerName = sanitizedFileStem(container.name)
+        let stagedContainerURL = stagingRoot.appendingPathComponent("\(appName)-\(containerName)-data", isDirectory: true)
+        try copyContainerDataForExport(from: containerURL, to: stagedContainerURL)
+
         let exportURL = fm.temporaryDirectory.appendingPathComponent("\(appName)-\(containerName)-data.zip")
         try? fm.removeItem(at: exportURL)
 
-        try await zipDirectory(sourceURL: containerURL, destinationURL: exportURL)
+        try await zipDirectory(sourceURL: stagedContainerURL, destinationURL: exportURL)
         return exportURL
     }
 
-    private func listExportableBinaries() throws -> [AppBinaryExportItem] {
-        guard let bundlePath = appInfo.bundlePath() else {
-            throw "Unable to read app bundle path."
-        }
+    private static func listExportableBinaries(bundlePath: String) throws -> [AppBinaryExportItem] {
         let rootURL = URL(fileURLWithPath: bundlePath, isDirectory: true)
         let fm = FileManager.default
 
@@ -790,6 +1053,60 @@ struct LCAppBanner : View {
             .joined(separator: "_")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? "Export" : cleaned
+    }
+
+    func copyContainerDataForExport(from sourceContainerURL: URL, to destinationContainerURL: URL) throws {
+        let fm = FileManager.default
+        var sourceIsDirectory: ObjCBool = false
+        guard fm.fileExists(atPath: sourceContainerURL.path, isDirectory: &sourceIsDirectory), sourceIsDirectory.boolValue else {
+            throw "Selected container path is not a directory."
+        }
+
+        try fm.createDirectory(at: destinationContainerURL, withIntermediateDirectories: true)
+        let items = try fm.contentsOfDirectory(
+            at: sourceContainerURL,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: []
+        )
+
+        for itemURL in items {
+            let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            // Skip symlinks to avoid exporting broken links (common for `tmp`) that fail archive creation.
+            if values.isSymbolicLink == true {
+                continue
+            }
+            let destinationItemURL = destinationContainerURL.appendingPathComponent(itemURL.lastPathComponent, isDirectory: values.isDirectory ?? false)
+
+            do {
+                try fm.copyItem(at: itemURL, to: destinationItemURL)
+            } catch {
+                if shouldIgnoreDataExportCopyError(error, sourceItemURL: itemURL, isSymbolicLink: values.isSymbolicLink ?? false) {
+                    continue
+                }
+                throw error
+            }
+        }
+    }
+
+    func shouldIgnoreDataExportCopyError(_ error: Error, sourceItemURL: URL, isSymbolicLink: Bool) -> Bool {
+        let nsError = error as NSError
+        if !isNoSuchFileError(nsError) {
+            return false
+        }
+        if isSymbolicLink {
+            return true
+        }
+        return sourceItemURL.lastPathComponent == "tmp"
+    }
+
+    func isNoSuchFileError(_ nsError: NSError) -> Bool {
+        if nsError.domain == NSCocoaErrorDomain {
+            return nsError.code == NSFileNoSuchFileError || nsError.code == NSFileReadNoSuchFileError
+        }
+        if nsError.domain == NSPOSIXErrorDomain {
+            return nsError.code == ENOENT
+        }
+        return false
     }
     
     func extractMainHueColor() -> Color {
