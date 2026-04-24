@@ -28,10 +28,10 @@ NSString *spoofMobileNetworkCode = nil;
 NSString *spoofISOCountryCode = nil;
 NSString *spoofRadioAccessTechnology = nil;
 
-@interface CTTelephonyNetworkInfo : NSObject
+@interface LCSpoofCarrier : NSObject
 @end
 
-@interface LCSpoofCarrier : NSObject
+@interface LCTelephonyNetworkInfoHookProvider : NSObject
 @end
 
 @implementation LCSpoofCarrier
@@ -49,6 +49,27 @@ static void LCSwizzleIfPresent(Class cls, SEL originalAction, SEL swizzledAction
     Method originalMethod = class_getInstanceMethod(cls, originalAction);
     Method swizzledMethod = class_getInstanceMethod(cls, swizzledAction);
     if(originalMethod && swizzledMethod) {
+        method_exchangeImplementations(originalMethod, swizzledMethod);
+    }
+}
+
+static void LCSwizzleIfPresentWithSourceClass(Class cls, Class sourceCls, SEL originalAction, SEL swizzledAction) {
+    if(!cls || !sourceCls) {
+        return;
+    }
+    Method originalMethod = class_getInstanceMethod(cls, originalAction);
+    Method sourceMethod = class_getInstanceMethod(sourceCls, swizzledAction);
+    if(!originalMethod || !sourceMethod) {
+        return;
+    }
+    class_addMethod(
+        cls,
+        swizzledAction,
+        method_getImplementation(sourceMethod),
+        method_getTypeEncoding(sourceMethod)
+    );
+    Method swizzledMethod = class_getInstanceMethod(cls, swizzledAction);
+    if(swizzledMethod) {
         method_exchangeImplementations(originalMethod, swizzledMethod);
     }
 }
@@ -328,10 +349,10 @@ static void UIKitGuestHooksInit(void) {
     }
     if(blockDeviceInfoReads || spoofCarrierName || spoofMobileCountryCode || spoofMobileNetworkCode || spoofISOCountryCode || spoofRadioAccessTechnology) {
         Class telephonyClass = NSClassFromString(@"CTTelephonyNetworkInfo");
-        LCSwizzleIfPresent(telephonyClass, @selector(subscriberCellularProvider), @selector(hook_subscriberCellularProvider));
-        LCSwizzleIfPresent(telephonyClass, @selector(serviceSubscriberCellularProviders), @selector(hook_serviceSubscriberCellularProviders));
-        LCSwizzleIfPresent(telephonyClass, @selector(currentRadioAccessTechnology), @selector(hook_currentRadioAccessTechnology));
-        LCSwizzleIfPresent(telephonyClass, @selector(serviceCurrentRadioAccessTechnology), @selector(hook_serviceCurrentRadioAccessTechnology));
+        LCSwizzleIfPresentWithSourceClass(telephonyClass, LCTelephonyNetworkInfoHookProvider.class, @selector(subscriberCellularProvider), @selector(hook_subscriberCellularProvider));
+        LCSwizzleIfPresentWithSourceClass(telephonyClass, LCTelephonyNetworkInfoHookProvider.class, @selector(serviceSubscriberCellularProviders), @selector(hook_serviceSubscriberCellularProviders));
+        LCSwizzleIfPresentWithSourceClass(telephonyClass, LCTelephonyNetworkInfoHookProvider.class, @selector(currentRadioAccessTechnology), @selector(hook_currentRadioAccessTechnology));
+        LCSwizzleIfPresentWithSourceClass(telephonyClass, LCTelephonyNetworkInfoHookProvider.class, @selector(serviceCurrentRadioAccessTechnology), @selector(hook_serviceCurrentRadioAccessTechnology));
     }
 }
 
@@ -1289,7 +1310,7 @@ BOOL canAppOpenItself(NSURL* url) {
 
 @end
 
-@implementation CTTelephonyNetworkInfo(hook)
+@implementation LCTelephonyNetworkInfoHookProvider
 
 - (id)hook_subscriberCellularProvider {
     if(blockDeviceInfoReads) {
