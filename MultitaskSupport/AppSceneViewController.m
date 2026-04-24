@@ -47,6 +47,81 @@ static UIInterfaceOrientation LCInterfaceOrientationForView(UIView *view) {
     return windowScene ? windowScene.interfaceOrientation : UIInterfaceOrientationPortrait;
 }
 
+static NSString *const kLCStrictContainerInfoFileName = @"LCContainerInfo.plist";
+
+static NSString *LCContainerPathForDataUUID(NSString *dataUUID) {
+    if(dataUUID.length == 0) {
+        return nil;
+    }
+
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSURL *docURL = [fm URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].lastObject;
+    NSMutableArray<NSURL *> *candidateURLs = [NSMutableArray array];
+    if(docURL) {
+        [candidateURLs addObject:[docURL URLByAppendingPathComponent:[NSString stringWithFormat:@"Data/Application/%@", dataUUID]]];
+    }
+    NSURL *appGroupPath = [LCSharedUtils appGroupPath];
+    if(appGroupPath) {
+        [candidateURLs addObject:[appGroupPath URLByAppendingPathComponent:[NSString stringWithFormat:@"LiveContainer/Data/Application/%@", dataUUID]]];
+    }
+
+    for(NSURL *candidateURL in candidateURLs) {
+        NSString *containerInfoPath = [[candidateURL path] stringByAppendingPathComponent:kLCStrictContainerInfoFileName];
+        if([fm fileExistsAtPath:containerInfoPath]) {
+            return candidateURL.path;
+        }
+    }
+    return nil;
+}
+
+static BOOL LCStrictShouldAutoWipeContainerAtPath(NSString *containerPath) {
+    if(containerPath.length == 0) {
+        return NO;
+    }
+    NSString *containerInfoPath = [containerPath stringByAppendingPathComponent:kLCStrictContainerInfoFileName];
+    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:containerInfoPath];
+    if(![info isKindOfClass:NSDictionary.class]) {
+        return NO;
+    }
+    return [info[@"strictTestMode"] boolValue] && [info[@"strictAutoWipeOnExit"] boolValue];
+}
+
+static void LCStrictEnsureContainerDirectoriesAtPath(NSString *containerPath) {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSArray<NSString *> *directories = @[@"Library/Caches", @"Library/Cookies", @"Documents", @"SystemData", @"tmp"];
+    for(NSString *directory in directories) {
+        NSString *path = [containerPath stringByAppendingPathComponent:directory];
+        [fm createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
+    }
+}
+
+static void LCStrictAutoWipeContainerForDataUUIDIfNeeded(NSString *dataUUID) {
+    NSString *containerPath = LCContainerPathForDataUUID(dataUUID);
+    if(containerPath.length == 0 || !LCStrictShouldAutoWipeContainerAtPath(containerPath)) {
+        return;
+    }
+
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSError *listError = nil;
+    NSArray<NSString *> *entries = [fm contentsOfDirectoryAtPath:containerPath error:&listError];
+    if(!entries) {
+        NSLog(@"[LC][StrictMode] Failed to enumerate container %@ for auto-wipe: %@", dataUUID, listError.localizedDescription);
+        return;
+    }
+
+    for(NSString *entry in entries) {
+        if([entry isEqualToString:kLCStrictContainerInfoFileName]) {
+            continue;
+        }
+        NSError *removeError = nil;
+        NSString *entryPath = [containerPath stringByAppendingPathComponent:entry];
+        if(![fm removeItemAtPath:entryPath error:&removeError] && removeError) {
+            NSLog(@"[LC][StrictMode] Failed to remove %@ in container %@: %@", entry, dataUUID, removeError.localizedDescription);
+        }
+    }
+    LCStrictEnsureContainerDirectoriesAtPath(containerPath);
+}
+
 @implementation AppSceneViewController
 
 
@@ -281,6 +356,8 @@ static UIInterfaceOrientation LCInterfaceOrientationForView(UIView *view) {
             [self.presenter invalidate];
             self.presenter = nil;
         }
+
+        LCStrictAutoWipeContainerForDataUUIDIfNeeded(self.dataUUID);
         
         [self.delegate appSceneVCAppDidExit:self];
         [MultitaskManager unregisterMultitaskContainerWithContainer:self.dataUUID];

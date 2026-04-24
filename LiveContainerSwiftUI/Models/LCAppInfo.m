@@ -537,6 +537,18 @@ uint32_t dyld_get_sdk_version(const struct mach_header* mh);
     [self save];
 }
 
+- (bool)standaloneTweaksExperimental {
+    if(_info[@"standaloneTweaksExperimental"] != nil) {
+        return [_info[@"standaloneTweaksExperimental"] boolValue];
+    } else {
+        return NO;
+    }
+}
+- (void)setStandaloneTweaksExperimental:(bool)standaloneTweaksExperimental {
+    _info[@"standaloneTweaksExperimental"] = [NSNumber numberWithBool:standaloneTweaksExperimental];
+    [self save];
+}
+
 - (bool)doUseLCBundleId {
     if(_info[@"doUseLCBundleId"] != nil) {
         return [_info[@"doUseLCBundleId"] boolValue];

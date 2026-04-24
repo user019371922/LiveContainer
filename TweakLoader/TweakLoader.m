@@ -7,9 +7,12 @@
 
 static NSString *const kDisabledTweaksKey = @"disabledItems";
 static NSString *const kContainerInfoFileName = @"LCContainerInfo.plist";
+static NSString *const kStrictSessionMarkerFileName = @".lc_strict_session_active";
 static BOOL strictTestModeEnabled = NO;
 static BOOL strictAutoWipeOnExitEnabled = NO;
+static BOOL strictAutoWipePerformed = NO;
 static NSString *strictContainerHomePath = nil;
+static id strictWillTerminateObserver = nil;
 
 static void LCStrictAutoWipeOnExit(void);
 
@@ -20,6 +23,37 @@ static void LCStrictEnsureContainerDirectories(NSString *homePath) {
         NSString *path = [homePath stringByAppendingPathComponent:directory];
         [fm createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
     }
+}
+
+static NSString *LCStrictSessionMarkerPath(NSString *homePath) {
+    if(homePath.length == 0) {
+        return nil;
+    }
+    return [homePath stringByAppendingPathComponent:kStrictSessionMarkerFileName];
+}
+
+static void LCStrictWriteSessionMarker(NSString *homePath) {
+    NSString *markerPath = LCStrictSessionMarkerPath(homePath);
+    if(markerPath.length == 0) {
+        return;
+    }
+    [NSFileManager.defaultManager createFileAtPath:markerPath contents:[NSData data] attributes:nil];
+}
+
+static void LCStrictRemoveSessionMarker(NSString *homePath) {
+    NSString *markerPath = LCStrictSessionMarkerPath(homePath);
+    if(markerPath.length == 0) {
+        return;
+    }
+    [NSFileManager.defaultManager removeItemAtPath:markerPath error:nil];
+}
+
+static BOOL LCStrictSessionMarkerExists(NSString *homePath) {
+    NSString *markerPath = LCStrictSessionMarkerPath(homePath);
+    if(markerPath.length == 0) {
+        return NO;
+    }
+    return [NSFileManager.defaultManager fileExistsAtPath:markerPath];
 }
 
 static void LCStrictWipeContainerContentsIfNeeded(void) {
@@ -58,9 +92,34 @@ static void LCStrictWipeContainerContentsIfNeeded(void) {
     LCStrictEnsureContainerDirectories(homePath);
 }
 
+static void LCStrictRecoverStaleSessionIfNeeded(void) {
+    if(!strictAutoWipeOnExitEnabled || strictContainerHomePath.length == 0) {
+        return;
+    }
+    if(LCStrictSessionMarkerExists(strictContainerHomePath)) {
+        NSLog(@"[LC][StrictMode] Detected stale strict session marker. Applying deferred auto-wipe.");
+        LCStrictWipeContainerContentsIfNeeded();
+        LCStrictRemoveSessionMarker(strictContainerHomePath);
+    }
+}
+
+static void LCStrictRegisterLifecycleObservers(void) {
+    if(!strictAutoWipeOnExitEnabled || strictWillTerminateObserver != nil) {
+        return;
+    }
+    strictWillTerminateObserver = [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillTerminateNotification object:nil queue:nil usingBlock:^(NSNotification * _Nonnull note) {
+        LCStrictAutoWipeOnExit();
+    }];
+}
+
 static void LCStrictAutoWipeOnExit(void) {
     @autoreleasepool {
+        if(strictAutoWipePerformed) {
+            return;
+        }
+        strictAutoWipePerformed = YES;
         LCStrictWipeContainerContentsIfNeeded();
+        LCStrictRemoveSessionMarker(strictContainerHomePath);
     }
 }
 
@@ -155,6 +214,9 @@ static void TweakLoaderConstructor() {
         const char *homeEnv = getenv("HOME");
         if(homeEnv) {
             strictContainerHomePath = [NSString stringWithUTF8String:homeEnv];
+            LCStrictRecoverStaleSessionIfNeeded();
+            LCStrictWriteSessionMarker(strictContainerHomePath);
+            LCStrictRegisterLifecycleObservers();
             atexit(LCStrictAutoWipeOnExit);
         }
     }
@@ -162,11 +224,16 @@ static void TweakLoaderConstructor() {
     const char *tweakFolderC = getenv("LC_GLOBAL_TWEAKS_FOLDER");
     NSString *globalTweakFolder = @(tweakFolderC);
     unsetenv("LC_GLOBAL_TWEAKS_FOLDER");
-    
-    if([NSUserDefaults.guestAppInfo[@"dontInjectTweakLoader"] boolValue]) {
-        // don't load any tweak since tweakloader is loaded after all initializers
+
+    BOOL dontInjectTweakLoader = [NSUserDefaults.guestAppInfo[@"dontInjectTweakLoader"] boolValue];
+    BOOL standaloneTweaksExperimental = [NSUserDefaults.guestAppInfo[@"standaloneTweaksExperimental"] boolValue];
+    if(dontInjectTweakLoader && !standaloneTweaksExperimental) {
+        // don't load tweaks since TweakLoader is late-loaded and standalone mode is disabled
         NSLog(@"Skip loading tweaks");
         return;
+    }
+    if(dontInjectTweakLoader && standaloneTweaksExperimental) {
+        NSLog(@"Standalone Tweaks (Experimental) is enabled. Loading tweaks in late-load mode.");
     }
     
     NSMutableArray *errors = [NSMutableArray new];

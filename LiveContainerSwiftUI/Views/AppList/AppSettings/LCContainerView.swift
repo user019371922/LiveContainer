@@ -15,6 +15,7 @@ protocol LCContainerViewDelegate {
     func getSettingsBundle() -> Bundle?
     func getContainerURL(container: LCContainer) -> URL
     func getBundleId() -> String
+    func isTweakLoaderInjectionDisabled() -> Bool
 }
 
 struct LCContainerView : View {
@@ -51,6 +52,10 @@ struct LCContainerView : View {
     @State private var errorInfo = ""
     @State private var successShow = false
     @State private var successInfo = ""
+
+    private var tweakLoaderDependentControlsEnabled: Bool {
+        !delegate.isTweakLoaderInjectionDisabled()
+    }
     
     init(container: LCContainer, uiDefaultDataFolder : Binding<String?>, delegate: LCContainerViewDelegate) {
         self._container = ObservedObject(initialValue: container)
@@ -127,6 +132,7 @@ struct LCContainerView : View {
                     Toggle(isOn: $container.spoofIdentifierForVendor) {
                         Text("lc.container.spoofIdentifierForVendor".loc)
                     }
+                    .disabled(!tweakLoaderDependentControlsEnabled)
                     .onChange(of: container.spoofIdentifierForVendor) { newValue in
                         saveContainer()
                     }
@@ -141,16 +147,23 @@ struct LCContainerView : View {
                                 }
                         }
                     }
+                    if !tweakLoaderDependentControlsEnabled {
+                        Text("Disabled because Don't Inject TweakLoader is enabled for this app.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section {
                     Toggle("Strict Test Mode", isOn: $container.strictTestMode)
+                        .disabled(!tweakLoaderDependentControlsEnabled)
                         .onChange(of: container.strictTestMode) { _ in
                             saveStrictModeSettings()
                         }
 
                     if container.strictTestMode {
                         Toggle("Auto-Wipe Container on App Exit", isOn: $container.strictAutoWipeOnExit)
+                            .disabled(!tweakLoaderDependentControlsEnabled)
                             .onChange(of: container.strictAutoWipeOnExit) { _ in
                                 saveContainer()
                             }
@@ -158,17 +171,22 @@ struct LCContainerView : View {
                 } header: {
                     Text("Strict Test Mode")
                 } footer: {
-                    Text("Aggressive isolation for app testing: forces app-group isolation, blocks device identity/profile reads, blocks common external URL/network paths, and can auto-wipe this container on exit.")
+                    if tweakLoaderDependentControlsEnabled {
+                        Text("Aggressive isolation for app testing: forces app-group isolation, blocks device identity/profile reads, blocks common external URL/network paths, and can auto-wipe this container on exit.")
+                    } else {
+                        Text("Strict Test Mode requires TweakLoader injection. Disable Don't Inject TweakLoader in App Settings to use this.")
+                    }
                 }
 
                 Section {
                     Toggle("Block Device Info Reads", isOn: $container.blockDeviceInfoReads)
-                        .disabled(container.strictTestMode)
+                        .disabled(container.strictTestMode || !tweakLoaderDependentControlsEnabled)
                         .onChange(of: container.blockDeviceInfoReads) { _ in
                             saveContainer()
                         }
 
                     Toggle("Advanced Spoof Profile", isOn: $container.spoofProfileEnabled)
+                        .disabled(!tweakLoaderDependentControlsEnabled)
                         .onChange(of: container.spoofProfileEnabled) { _ in
                             if container.spoofProfileEnabled {
                                 applyRandomDeviceProfileValues()
@@ -297,7 +315,11 @@ struct LCContainerView : View {
                 } header: {
                     Text("Spoof Profile")
                 } footer: {
-                    Text("Overrides UIDevice, NSProcessInfo, Locale/TimeZone, and modern CoreTelephony subscriber surfaces (CTSubscriber/CTSubscriberInfo + serviceCurrentRadioAccessTechnology). If Block Device Info Reads is enabled, unknown/empty values are returned instead.")
+                    if tweakLoaderDependentControlsEnabled {
+                        Text("Overrides UIDevice, NSProcessInfo, Locale/TimeZone, and modern CoreTelephony subscriber surfaces (CTSubscriber/CTSubscriberInfo + serviceCurrentRadioAccessTechnology). If Block Device Info Reads is enabled, unknown/empty values are returned instead.")
+                    } else {
+                        Text("Spoof controls require TweakLoader injection. Disable Don't Inject TweakLoader in App Settings to use this.")
+                    }
                 }
 
                 Section {

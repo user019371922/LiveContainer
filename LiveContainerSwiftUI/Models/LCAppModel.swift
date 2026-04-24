@@ -75,6 +75,11 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             appInfo.dontLoadTweakLoader = uiDontLoadTweakLoader
         }
     }
+    @Published var uiStandaloneTweaksExperimental : Bool {
+        didSet {
+            appInfo.standaloneTweaksExperimental = uiStandaloneTweaksExperimental
+        }
+    }
     @Published var uiOrientationLock : LCOrientationLock {
         didSet {
             appInfo.orientationLock = uiOrientationLock
@@ -181,6 +186,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
         self.uiDontInjectTweakLoader = appInfo.dontInjectTweakLoader
         self.uiTweakLoaderInjectFailed = appInfo.info()["LCTweakLoaderCantInject"] as? Bool ?? false
         self.uiDontLoadTweakLoader = appInfo.dontLoadTweakLoader
+        self.uiStandaloneTweaksExperimental = appInfo.standaloneTweaksExperimental
         self.uiDontSign = appInfo.dontSign
         self.jitLaunchScriptJs = appInfo.jitLaunchScriptJs
         self.uiSpoofSDKVersion = appInfo.spoofSDKVersion

@@ -342,6 +342,10 @@ struct LCAppSettingsView: View {
                     Toggle(isOn: $model.uiDontLoadTweakLoader) {
                         Text("lc.appSettings.dontLoadTweakLoader".loc)
                     }
+                    Toggle(isOn: $model.uiStandaloneTweaksExperimental) {
+                        Text("Standalone Tweaks (Experimental)")
+                    }
+                    .disabled(model.uiDontLoadTweakLoader)
                 }
                 
             } footer: {
@@ -1107,6 +1111,10 @@ private func lcIsNoSuchFileError(_ error: Error) -> Bool {
 
 
 extension LCAppSettingsView : LCContainerViewDelegate {
+    func isTweakLoaderInjectionDisabled() -> Bool {
+        model.uiDontInjectTweakLoader
+    }
+
     func getBundleId() -> String {
         return model.appInfo.bundleIdentifier()!
     }
