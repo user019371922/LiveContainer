@@ -257,7 +257,8 @@ static void UIKitGuestHooksInit(void) {
         );
     }
 
-    BOOL shouldSpoofIdentifierForVendor = [guestContainerInfo[@"spoofIdentifierForVendor"] boolValue];
+    BOOL shouldEnableSpoofProfile = [guestContainerInfo[@"spoofProfileEnabled"] boolValue];
+    BOOL shouldSpoofIdentifierForVendor = shouldEnableSpoofProfile && [guestContainerInfo[@"spoofIdentifierForVendor"] boolValue];
     if(shouldSpoofIdentifierForVendor) {
         NSString* idForVendorStr = guestContainerInfo[@"spoofedIdentifierForVendor"];
         if([idForVendorStr isKindOfClass:NSString.class]) {
@@ -268,7 +269,7 @@ static void UIKitGuestHooksInit(void) {
         swizzle(UIDevice.class, @selector(identifierForVendor), @selector(hook_identifierForVendor));
     }
 
-    if([guestContainerInfo[@"spoofProfileEnabled"] boolValue]) {
+    if(shouldEnableSpoofProfile) {
         spoofProfileEnabled = YES;
         NSString *deviceName = guestContainerInfo[@"spoofDeviceName"];
         NSString *deviceModel = guestContainerInfo[@"spoofDeviceModel"];

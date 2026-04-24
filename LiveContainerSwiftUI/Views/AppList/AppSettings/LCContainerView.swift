@@ -129,32 +129,6 @@ struct LCContainerView : View {
                 }
                 
                 Section {
-                    Toggle(isOn: $container.spoofIdentifierForVendor) {
-                        Text("lc.container.spoofIdentifierForVendor".loc)
-                    }
-                    .disabled(!tweakLoaderDependentControlsEnabled)
-                    .onChange(of: container.spoofIdentifierForVendor) { newValue in
-                        saveContainer()
-                    }
-                    
-                    if container.spoofIdentifierForVendor {
-                        HStack {
-                            Text("UUID")
-                            TextField("lc.common.auto".loc, text: $typingIDFV)
-                                .multilineTextAlignment(.trailing)
-                                .onSubmit {
-                                    saveIDFV()
-                                }
-                        }
-                    }
-                    if !tweakLoaderDependentControlsEnabled {
-                        Text("Disabled because Don't Inject TweakLoader is enabled for this app.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Section {
                     Toggle("Strict Test Mode", isOn: $container.strictTestMode)
                         .disabled(!tweakLoaderDependentControlsEnabled)
                         .onChange(of: container.strictTestMode) { _ in
@@ -196,6 +170,24 @@ struct LCContainerView : View {
 
                     if container.spoofProfileEnabled {
                         Group {
+                        Toggle(isOn: $container.spoofIdentifierForVendor) {
+                            Text("lc.container.spoofIdentifierForVendor".loc)
+                        }
+                        .onChange(of: container.spoofIdentifierForVendor) { _ in
+                            saveSpoofProfile()
+                        }
+
+                        if container.spoofIdentifierForVendor {
+                            HStack {
+                                Text("Vendor ID (UUID)")
+                                TextField("lc.common.auto".loc, text: $typingIDFV)
+                                    .multilineTextAlignment(.trailing)
+                                    .onSubmit {
+                                        saveSpoofProfile()
+                                    }
+                            }
+                        }
+
                         HStack {
                             Text("Device Name")
                             TextField("iPhone", text: $typingSpoofDeviceName)
@@ -316,7 +308,7 @@ struct LCContainerView : View {
                     Text("Spoof Profile")
                 } footer: {
                     if tweakLoaderDependentControlsEnabled {
-                        Text("Overrides UIDevice, NSProcessInfo, Locale/TimeZone, and modern CoreTelephony subscriber surfaces (CTSubscriber/CTSubscriberInfo + serviceCurrentRadioAccessTechnology). If Block Device Info Reads is enabled, unknown/empty values are returned instead.")
+                        Text("Overrides UIDevice (including identifierForVendor), NSProcessInfo, Locale/TimeZone, and modern CoreTelephony subscriber surfaces (CTSubscriber/CTSubscriberInfo + serviceCurrentRadioAccessTechnology). If Block Device Info Reads is enabled, unknown/empty values are returned instead.")
                     } else {
                         Text("Spoof controls require TweakLoader injection. Disable Don't Inject TweakLoader in App Settings to use this.")
                     }
@@ -460,17 +452,26 @@ struct LCContainerView : View {
         
     }
     
-    func saveIDFV() {
-        guard let newIDFV = UUID(uuidString: typingIDFV) else {
-            errorInfo = "lc.container.invalidIDFV".loc
-            errorShow = true
-            return
-        }
-        container.spoofedIdentifier = newIDFV.uuidString
-        delegate.saveContainer(container: container)
-    }
-
     func saveSpoofProfile() {
+        let rawIDFV = typingIDFV.trimmingCharacters(in: .whitespacesAndNewlines)
+        if container.spoofIdentifierForVendor {
+            if rawIDFV.isEmpty {
+                let generatedIDFV = UUID().uuidString
+                typingIDFV = generatedIDFV
+                container.spoofedIdentifier = generatedIDFV
+            } else if let normalizedIDFV = UUID(uuidString: rawIDFV) {
+                let normalizedValue = normalizedIDFV.uuidString
+                typingIDFV = normalizedValue
+                container.spoofedIdentifier = normalizedValue
+            } else {
+                errorInfo = "lc.container.invalidIDFV".loc
+                errorShow = true
+                return
+            }
+        } else {
+            container.spoofedIdentifier = nil
+        }
+
         let normalizedSystemVersion = typingSpoofSystemVersion.trimmingCharacters(in: .whitespacesAndNewlines)
         if !normalizedSystemVersion.isEmpty && !isValidSystemVersion(normalizedSystemVersion) {
             errorInfo = "System Version must use numbers like 26 or 26.1 or 26.1.2."
@@ -542,6 +543,8 @@ struct LCContainerView : View {
     }
 
     func applyCurrentDeviceProfileValues() {
+        container.spoofIdentifierForVendor = true
+        typingIDFV = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
         typingSpoofDeviceName = UIDevice.current.name
         typingSpoofDeviceModel = UIDevice.current.model
         typingSpoofSystemName = UIDevice.current.systemName
@@ -593,6 +596,8 @@ struct LCContainerView : View {
         let tokenBytes = (0..<24).map { _ in UInt8.random(in: 0...255) }
         let randomToken = Data(tokenBytes).base64EncodedString()
 
+        container.spoofIdentifierForVendor = true
+        typingIDFV = UUID().uuidString
         typingSpoofDeviceName = selectedName
         typingSpoofDeviceModel = isPad ? "iPad" : "iPhone"
         typingSpoofSystemName = currentSystemName

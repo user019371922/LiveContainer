@@ -225,15 +225,10 @@ static void TweakLoaderConstructor() {
     NSString *globalTweakFolder = @(tweakFolderC);
     unsetenv("LC_GLOBAL_TWEAKS_FOLDER");
 
-    BOOL dontInjectTweakLoader = [NSUserDefaults.guestAppInfo[@"dontInjectTweakLoader"] boolValue];
-    BOOL standaloneTweaksExperimental = [NSUserDefaults.guestAppInfo[@"standaloneTweaksExperimental"] boolValue];
-    if(dontInjectTweakLoader && !standaloneTweaksExperimental) {
-        // don't load tweaks since TweakLoader is late-loaded and standalone mode is disabled
+    if([NSUserDefaults.guestAppInfo[@"dontInjectTweakLoader"] boolValue]) {
+        // don't load any tweak since tweakloader is loaded after all initializers
         NSLog(@"Skip loading tweaks");
         return;
-    }
-    if(dontInjectTweakLoader && standaloneTweaksExperimental) {
-        NSLog(@"Standalone Tweaks (Experimental) is enabled. Loading tweaks in late-load mode.");
     }
     
     NSMutableArray *errors = [NSMutableArray new];

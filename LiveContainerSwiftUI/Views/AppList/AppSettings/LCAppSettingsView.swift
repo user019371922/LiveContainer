@@ -342,10 +342,6 @@ struct LCAppSettingsView: View {
                     Toggle(isOn: $model.uiDontLoadTweakLoader) {
                         Text("lc.appSettings.dontLoadTweakLoader".loc)
                     }
-                    Toggle(isOn: $model.uiStandaloneTweaksExperimental) {
-                        Text("Standalone Tweaks (Experimental)")
-                    }
-                    .disabled(model.uiDontLoadTweakLoader)
                 }
                 
             } footer: {

@@ -29,7 +29,6 @@ typedef NS_ENUM(NSInteger, MultitaskSpecified){
 @property bool hideLiveContainer;
 @property bool dontLoadTweakLoader;
 @property bool dontInjectTweakLoader;
-@property bool standaloneTweaksExperimental;
 @property LCOrientationLock orientationLock;
 @property MultitaskSpecified multitaskSpecified;
 @property bool fixFilePickerNew;
