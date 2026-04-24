@@ -8,6 +8,71 @@
 UIInterfaceOrientation LCOrientationLock = UIInterfaceOrientationUnknown;
 NSMutableArray<NSString*>* LCSupportedUrlSchemes = nil;
 NSUUID* idForVendorUUID = nil;
+BOOL spoofProfileEnabled = NO;
+NSString *spoofDeviceName = nil;
+NSString *spoofDeviceModel = nil;
+NSString *spoofSystemName = nil;
+NSString *spoofSystemVersion = nil;
+NSLocale *spoofLocale = nil;
+NSTimeZone *spoofTimeZone = nil;
+NSOperatingSystemVersion spoofOperatingSystemVersion;
+BOOL spoofOperatingSystemVersionValid = NO;
+
+static BOOL LCParseVersionPart(NSString *part, NSInteger *outValue) {
+    if(![part isKindOfClass:NSString.class] || part.length == 0) {
+        return NO;
+    }
+    NSCharacterSet *nonDigits = NSCharacterSet.decimalDigitCharacterSet.invertedSet;
+    if([part rangeOfCharacterFromSet:nonDigits].location != NSNotFound) {
+        return NO;
+    }
+    long long parsedValue = part.longLongValue;
+    if(parsedValue < 0 || parsedValue > NSIntegerMax) {
+        return NO;
+    }
+    *outValue = (NSInteger)parsedValue;
+    return YES;
+}
+
+static BOOL LCParseSystemVersion(NSString *versionString, NSOperatingSystemVersion *outVersion) {
+    if(![versionString isKindOfClass:NSString.class]) {
+        return NO;
+    }
+    NSArray<NSString*> *parts = [versionString componentsSeparatedByString:@"."];
+    if(parts.count == 0 || parts.count > 3) {
+        return NO;
+    }
+
+    NSInteger major = 0;
+    NSInteger minor = 0;
+    NSInteger patch = 0;
+    if(!LCParseVersionPart(parts[0], &major)) {
+        return NO;
+    }
+    if(parts.count > 1 && !LCParseVersionPart(parts[1], &minor)) {
+        return NO;
+    }
+    if(parts.count > 2 && !LCParseVersionPart(parts[2], &patch)) {
+        return NO;
+    }
+    outVersion->majorVersion = major;
+    outVersion->minorVersion = minor;
+    outVersion->patchVersion = patch;
+    return YES;
+}
+
+static NSInteger LCCompareOSVersion(NSOperatingSystemVersion lhs, NSOperatingSystemVersion rhs) {
+    if(lhs.majorVersion != rhs.majorVersion) {
+        return lhs.majorVersion < rhs.majorVersion ? -1 : 1;
+    }
+    if(lhs.minorVersion != rhs.minorVersion) {
+        return lhs.minorVersion < rhs.minorVersion ? -1 : 1;
+    }
+    if(lhs.patchVersion != rhs.patchVersion) {
+        return lhs.patchVersion < rhs.patchVersion ? -1 : 1;
+    }
+    return 0;
+}
 
 static UIWindowScene *LCForegroundWindowScene(void) {
     UIWindowScene *fallbackScene = nil;
@@ -86,6 +151,66 @@ static void UIKitGuestHooksInit() {
             if(idForVendorUUID) {
                 swizzle(UIDevice.class, @selector(identifierForVendor), @selector(hook_identifierForVendor));
             }
+        }
+    }
+
+    if([guestContainerInfo[@"spoofProfileEnabled"] boolValue]) {
+        spoofProfileEnabled = YES;
+        NSString *deviceName = guestContainerInfo[@"spoofDeviceName"];
+        NSString *deviceModel = guestContainerInfo[@"spoofDeviceModel"];
+        NSString *systemName = guestContainerInfo[@"spoofSystemName"];
+        NSString *systemVersion = guestContainerInfo[@"spoofSystemVersion"];
+        NSString *localeIdentifier = guestContainerInfo[@"spoofLocaleIdentifier"];
+        NSString *timeZoneIdentifier = guestContainerInfo[@"spoofTimeZoneIdentifier"];
+
+        if([deviceName isKindOfClass:NSString.class] && deviceName.length > 0) {
+            spoofDeviceName = deviceName;
+        }
+        if([deviceModel isKindOfClass:NSString.class] && deviceModel.length > 0) {
+            spoofDeviceModel = deviceModel;
+        }
+        if([systemName isKindOfClass:NSString.class] && systemName.length > 0) {
+            spoofSystemName = systemName;
+        }
+        if([systemVersion isKindOfClass:NSString.class] && systemVersion.length > 0) {
+            spoofSystemVersion = systemVersion;
+            spoofOperatingSystemVersionValid = LCParseSystemVersion(systemVersion, &spoofOperatingSystemVersion);
+        }
+
+        if([localeIdentifier isKindOfClass:NSString.class] && localeIdentifier.length > 0) {
+            NSLocale *candidateLocale = [[NSLocale alloc] initWithLocaleIdentifier:localeIdentifier];
+            if(candidateLocale.localeIdentifier.length > 0) {
+                spoofLocale = candidateLocale;
+            }
+        }
+
+        if([timeZoneIdentifier isKindOfClass:NSString.class] && timeZoneIdentifier.length > 0) {
+            NSTimeZone *candidateTimeZone = [NSTimeZone timeZoneWithName:timeZoneIdentifier];
+            if(candidateTimeZone) {
+                spoofTimeZone = candidateTimeZone;
+                [NSTimeZone setDefaultTimeZone:candidateTimeZone];
+            }
+        }
+
+        if(spoofDeviceName || spoofDeviceModel || spoofSystemName || spoofSystemVersion) {
+            swizzle(UIDevice.class, @selector(name), @selector(hook_name));
+            swizzle(UIDevice.class, @selector(model), @selector(hook_model));
+            swizzle(UIDevice.class, @selector(systemName), @selector(hook_systemName));
+            swizzle(UIDevice.class, @selector(systemVersion), @selector(hook_systemVersion));
+        }
+        if(spoofOperatingSystemVersionValid || spoofSystemVersion) {
+            swizzle(NSProcessInfo.class, @selector(operatingSystemVersion), @selector(hook_operatingSystemVersion));
+            swizzle(NSProcessInfo.class, @selector(operatingSystemVersionString), @selector(hook_operatingSystemVersionString));
+            swizzle(NSProcessInfo.class, @selector(isOperatingSystemAtLeastVersion:), @selector(hook_isOperatingSystemAtLeastVersion:));
+        }
+        if(spoofLocale) {
+            swizzleClassMethod(NSLocale.class, @selector(currentLocale), @selector(hook_currentLocale));
+            swizzleClassMethod(NSLocale.class, @selector(autoupdatingCurrentLocale), @selector(hook_autoupdatingCurrentLocale));
+        }
+        if(spoofTimeZone) {
+            swizzleClassMethod(NSTimeZone.class, @selector(localTimeZone), @selector(hook_localTimeZone));
+            swizzleClassMethod(NSTimeZone.class, @selector(systemTimeZone), @selector(hook_systemTimeZone));
+            swizzleClassMethod(NSTimeZone.class, @selector(defaultTimeZone), @selector(hook_defaultTimeZone));
         }
     }
 }
@@ -786,6 +911,103 @@ BOOL canAppOpenItself(NSURL* url) {
 
 - (NSUUID*)hook_identifierForVendor {
     return idForVendorUUID;
+}
+
+- (NSString *)hook_name {
+    if(spoofProfileEnabled && spoofDeviceName.length > 0) {
+        return spoofDeviceName;
+    }
+    return [self hook_name];
+}
+
+- (NSString *)hook_model {
+    if(spoofProfileEnabled && spoofDeviceModel.length > 0) {
+        return spoofDeviceModel;
+    }
+    return [self hook_model];
+}
+
+- (NSString *)hook_systemName {
+    if(spoofProfileEnabled && spoofSystemName.length > 0) {
+        return spoofSystemName;
+    }
+    return [self hook_systemName];
+}
+
+- (NSString *)hook_systemVersion {
+    if(spoofProfileEnabled && spoofSystemVersion.length > 0) {
+        return spoofSystemVersion;
+    }
+    return [self hook_systemVersion];
+}
+
+@end
+
+@implementation NSProcessInfo(hook)
+
+- (NSOperatingSystemVersion)hook_operatingSystemVersion {
+    if(spoofProfileEnabled && spoofOperatingSystemVersionValid) {
+        return spoofOperatingSystemVersion;
+    }
+    return [self hook_operatingSystemVersion];
+}
+
+- (NSString *)hook_operatingSystemVersionString {
+    if(spoofProfileEnabled && spoofSystemVersion.length > 0) {
+        NSString *name = spoofSystemName.length > 0 ? spoofSystemName : @"iOS";
+        return [NSString stringWithFormat:@"%@ %@", name, spoofSystemVersion];
+    }
+    return [self hook_operatingSystemVersionString];
+}
+
+- (BOOL)hook_isOperatingSystemAtLeastVersion:(NSOperatingSystemVersion)version {
+    if(spoofProfileEnabled && spoofOperatingSystemVersionValid) {
+        return LCCompareOSVersion(spoofOperatingSystemVersion, version) >= 0;
+    }
+    return [self hook_isOperatingSystemAtLeastVersion:version];
+}
+
+@end
+
+@implementation NSLocale(hook)
+
++ (NSLocale *)hook_currentLocale {
+    if(spoofProfileEnabled && spoofLocale) {
+        return spoofLocale;
+    }
+    return [self hook_currentLocale];
+}
+
++ (NSLocale *)hook_autoupdatingCurrentLocale {
+    if(spoofProfileEnabled && spoofLocale) {
+        return spoofLocale;
+    }
+    return [self hook_autoupdatingCurrentLocale];
+}
+
+@end
+
+@implementation NSTimeZone(hook)
+
++ (NSTimeZone *)hook_localTimeZone {
+    if(spoofProfileEnabled && spoofTimeZone) {
+        return spoofTimeZone;
+    }
+    return [self hook_localTimeZone];
+}
+
++ (NSTimeZone *)hook_systemTimeZone {
+    if(spoofProfileEnabled && spoofTimeZone) {
+        return spoofTimeZone;
+    }
+    return [self hook_systemTimeZone];
+}
+
++ (NSTimeZone *)hook_defaultTimeZone {
+    if(spoofProfileEnabled && spoofTimeZone) {
+        return spoofTimeZone;
+    }
+    return [self hook_defaultTimeZone];
 }
 
 @end

@@ -27,6 +27,13 @@ class LCContainer : ObservableObject, Hashable {
         }
     }
     public var spoofedIdentifier: String?
+    @Published var spoofProfileEnabled: Bool
+    @Published var spoofDeviceName: String
+    @Published var spoofDeviceModel: String
+    @Published var spoofSystemName: String
+    @Published var spoofSystemVersion: String
+    @Published var spoofLocaleIdentifier: String
+    @Published var spoofTimeZoneIdentifier: String
     private var infoDict : [String:Any]?
     public var containerURL : URL {
         if let resolvedContainerURL {
@@ -66,12 +73,34 @@ class LCContainer : ObservableObject, Hashable {
         }
     }
     
-    init(folderName: String, name: String, isShared : Bool, isolateAppGroup: Bool = false, spoofIdentifierForVendor: Bool = false, bookmarkData: Data? = nil, resolvedContainerURL: URL? = nil) {
+    init(
+        folderName: String,
+        name: String,
+        isShared : Bool,
+        isolateAppGroup: Bool = false,
+        spoofIdentifierForVendor: Bool = false,
+        spoofProfileEnabled: Bool = false,
+        spoofDeviceName: String = "",
+        spoofDeviceModel: String = "",
+        spoofSystemName: String = "",
+        spoofSystemVersion: String = "",
+        spoofLocaleIdentifier: String = "",
+        spoofTimeZoneIdentifier: String = "",
+        bookmarkData: Data? = nil,
+        resolvedContainerURL: URL? = nil
+    ) {
         self.folderName = folderName
         self.name = name
         self.isShared = isShared
         self.isolateAppGroup = isolateAppGroup
         self.spoofIdentifierForVendor = spoofIdentifierForVendor
+        self.spoofProfileEnabled = spoofProfileEnabled
+        self.spoofDeviceName = spoofDeviceName
+        self.spoofDeviceModel = spoofDeviceModel
+        self.spoofSystemName = spoofSystemName
+        self.spoofSystemVersion = spoofSystemVersion
+        self.spoofLocaleIdentifier = spoofLocaleIdentifier
+        self.spoofTimeZoneIdentifier = spoofTimeZoneIdentifier
         self.storageBookMark = bookmarkData
         self.resolvedContainerURL = resolvedContainerURL
     }
@@ -84,6 +113,13 @@ class LCContainer : ObservableObject, Hashable {
                   isShared: isShared,
                   isolateAppGroup: false,
                   spoofIdentifierForVendor: false,
+                  spoofProfileEnabled: false,
+                  spoofDeviceName: "",
+                  spoofDeviceModel: "",
+                  spoofSystemName: "",
+                  spoofSystemVersion: "",
+                  spoofLocaleIdentifier: "",
+                  spoofTimeZoneIdentifier: "",
                   bookmarkData: bookmarkData,
                   resolvedContainerURL: nil
         )
@@ -114,6 +150,13 @@ class LCContainer : ObservableObject, Hashable {
                 isolateAppGroup = plistInfo["isolateAppGroup"] as? Bool ?? false
                 spoofIdentifierForVendor = plistInfo["spoofIdentifierForVendor"] as? Bool ?? false
                 spoofedIdentifier = plistInfo["spoofedIdentifierForVendor"] as? String
+                spoofProfileEnabled = plistInfo["spoofProfileEnabled"] as? Bool ?? false
+                spoofDeviceName = plistInfo["spoofDeviceName"] as? String ?? ""
+                spoofDeviceModel = plistInfo["spoofDeviceModel"] as? String ?? ""
+                spoofSystemName = plistInfo["spoofSystemName"] as? String ?? ""
+                spoofSystemVersion = plistInfo["spoofSystemVersion"] as? String ?? ""
+                spoofLocaleIdentifier = plistInfo["spoofLocaleIdentifier"] as? String ?? ""
+                spoofTimeZoneIdentifier = plistInfo["spoofTimeZoneIdentifier"] as? String ?? ""
             }
         } catch {
             
@@ -137,10 +180,29 @@ class LCContainer : ObservableObject, Hashable {
             "name" : name,
             "keychainGroupId" : keychainGroupId,
             "isolateAppGroup" : isolateAppGroup,
-            "spoofIdentifierForVendor": spoofIdentifierForVendor
+            "spoofIdentifierForVendor": spoofIdentifierForVendor,
+            "spoofProfileEnabled": spoofProfileEnabled
         ]
         if let spoofedIdentifier {
             infoDict!["spoofedIdentifierForVendor"] = spoofedIdentifier
+        }
+        if !spoofDeviceName.isEmpty {
+            infoDict!["spoofDeviceName"] = spoofDeviceName
+        }
+        if !spoofDeviceModel.isEmpty {
+            infoDict!["spoofDeviceModel"] = spoofDeviceModel
+        }
+        if !spoofSystemName.isEmpty {
+            infoDict!["spoofSystemName"] = spoofSystemName
+        }
+        if !spoofSystemVersion.isEmpty {
+            infoDict!["spoofSystemVersion"] = spoofSystemVersion
+        }
+        if !spoofLocaleIdentifier.isEmpty {
+            infoDict!["spoofLocaleIdentifier"] = spoofLocaleIdentifier
+        }
+        if !spoofTimeZoneIdentifier.isEmpty {
+            infoDict!["spoofTimeZoneIdentifier"] = spoofTimeZoneIdentifier
         }
         
         do {
@@ -169,6 +231,13 @@ class LCContainer : ObservableObject, Hashable {
         isolateAppGroup = infoDict["isolateAppGroup"] as? Bool ?? false
         spoofIdentifierForVendor = infoDict["spoofIdentifierForVendor"] as? Bool ?? false
         spoofedIdentifier = infoDict["spoofedIdentifierForVendor"] as? String
+        spoofProfileEnabled = infoDict["spoofProfileEnabled"] as? Bool ?? false
+        spoofDeviceName = infoDict["spoofDeviceName"] as? String ?? ""
+        spoofDeviceModel = infoDict["spoofDeviceModel"] as? String ?? ""
+        spoofSystemName = infoDict["spoofSystemName"] as? String ?? ""
+        spoofSystemVersion = infoDict["spoofSystemVersion"] as? String ?? ""
+        spoofLocaleIdentifier = infoDict["spoofLocaleIdentifier"] as? String ?? ""
+        spoofTimeZoneIdentifier = infoDict["spoofTimeZoneIdentifier"] as? String ?? ""
     }
     
     static func == (lhs: LCContainer, rhs: LCContainer) -> Bool {
