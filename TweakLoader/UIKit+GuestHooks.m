@@ -10,6 +10,8 @@ NSMutableArray<NSString*>* LCSupportedUrlSchemes = nil;
 NSUUID* idForVendorUUID = nil;
 BOOL spoofProfileEnabled = NO;
 BOOL blockDeviceInfoReads = NO;
+BOOL strictTestMode = NO;
+UIPasteboard *strictPrivatePasteboard = nil;
 NSString *spoofDeviceName = nil;
 NSString *spoofDeviceModel = nil;
 NSString *spoofSystemName = nil;
@@ -22,24 +24,22 @@ float spoofBatteryLevel = -1.0f;
 NSInteger spoofBatteryState = UIDeviceBatteryStateUnknown;
 BOOL spoofLowPowerModeEnabled = NO;
 BOOL spoofLowPowerModeEnabledSet = NO;
-NSString *spoofCarrierName = nil;
-NSString *spoofMobileCountryCode = nil;
-NSString *spoofMobileNetworkCode = nil;
-NSString *spoofISOCountryCode = nil;
 NSString *spoofRadioAccessTechnology = nil;
-
-@interface LCSpoofCarrier : NSObject
-@end
+NSString *spoofSubscriberIdentifier = nil;
+NSData *spoofSubscriberCarrierToken = nil;
+BOOL spoofSubscriberSIMInsertedEnabled = NO;
+BOOL spoofSubscriberSIMInserted = NO;
 
 @interface LCTelephonyNetworkInfoHookProvider : NSObject
 @end
 
-@implementation LCSpoofCarrier
-- (NSString *)carrierName { return spoofCarrierName; }
-- (NSString *)mobileCountryCode { return spoofMobileCountryCode; }
-- (NSString *)mobileNetworkCode { return spoofMobileNetworkCode; }
-- (NSString *)isoCountryCode { return spoofISOCountryCode; }
-- (BOOL)allowsVOIP { return YES; }
+@interface LCSubscriberHookProvider : NSObject
+@end
+
+@interface LCSubscriberInfoHookProvider : NSObject
+@end
+
+@interface LCNetworkExtensionStrictHookProvider : NSObject
 @end
 
 static void LCSwizzleIfPresent(Class cls, SEL originalAction, SEL swizzledAction) {
@@ -81,6 +81,28 @@ static void LCSwizzleClassIfPresent(Class cls, SEL originalAction, SEL swizzledA
     Method originalMethod = class_getClassMethod(cls, originalAction);
     Method swizzledMethod = class_getClassMethod(cls, swizzledAction);
     if(originalMethod && swizzledMethod) {
+        method_exchangeImplementations(originalMethod, swizzledMethod);
+    }
+}
+
+static void LCSwizzleClassIfPresentWithSourceClass(Class cls, Class sourceCls, SEL originalAction, SEL swizzledAction) {
+    if(!cls || !sourceCls) {
+        return;
+    }
+    Method originalMethod = class_getClassMethod(cls, originalAction);
+    Method sourceMethod = class_getClassMethod(sourceCls, swizzledAction);
+    if(!originalMethod || !sourceMethod) {
+        return;
+    }
+    Class metaClass = object_getClass((id)cls);
+    class_addMethod(
+        metaClass,
+        swizzledAction,
+        method_getImplementation(sourceMethod),
+        method_getTypeEncoding(sourceMethod)
+    );
+    Method swizzledMethod = class_getClassMethod(cls, swizzledAction);
+    if(swizzledMethod) {
         method_exchangeImplementations(originalMethod, swizzledMethod);
     }
 }
@@ -219,7 +241,21 @@ static void UIKitGuestHooksInit(void) {
 
     }
     NSDictionary* guestContainerInfo = [NSUserDefaults guestContainerInfo];
-    blockDeviceInfoReads = [guestContainerInfo[@"blockDeviceInfoReads"] boolValue];
+    strictTestMode = [guestContainerInfo[@"strictTestMode"] boolValue];
+    blockDeviceInfoReads = strictTestMode || [guestContainerInfo[@"blockDeviceInfoReads"] boolValue];
+
+    if(strictTestMode) {
+        strictPrivatePasteboard = [UIPasteboard pasteboardWithUniqueName];
+        LCSwizzleClassIfPresent(UIPasteboard.class, @selector(generalPasteboard), @selector(hook_generalPasteboard));
+        LCSwizzleIfPresent(NSURLSessionTask.class, @selector(resume), @selector(hook_resume));
+        Class hotspotNetworkClass = NSClassFromString(@"NEHotspotNetwork");
+        LCSwizzleClassIfPresentWithSourceClass(
+            hotspotNetworkClass,
+            LCNetworkExtensionStrictHookProvider.class,
+            @selector(fetchCurrentWithCompletionHandler:),
+            @selector(hook_fetchCurrentWithCompletionHandler:)
+        );
+    }
 
     BOOL shouldSpoofIdentifierForVendor = [guestContainerInfo[@"spoofIdentifierForVendor"] boolValue];
     if(shouldSpoofIdentifierForVendor) {
@@ -243,11 +279,11 @@ static void UIKitGuestHooksInit(void) {
         NSNumber *batteryLevelNumber = guestContainerInfo[@"spoofBatteryLevel"];
         NSNumber *batteryStateNumber = guestContainerInfo[@"spoofBatteryState"];
         NSNumber *lowPowerModeNumber = guestContainerInfo[@"spoofLowPowerModeEnabled"];
-        NSString *carrierName = guestContainerInfo[@"spoofCarrierName"];
-        NSString *mobileCountryCode = guestContainerInfo[@"spoofMobileCountryCode"];
-        NSString *mobileNetworkCode = guestContainerInfo[@"spoofMobileNetworkCode"];
-        NSString *isoCountryCode = guestContainerInfo[@"spoofISOCountryCode"];
         NSString *radioAccessTechnology = guestContainerInfo[@"spoofRadioAccessTechnology"];
+        NSString *subscriberIdentifier = guestContainerInfo[@"spoofSubscriberIdentifier"];
+        NSString *subscriberCarrierTokenBase64 = guestContainerInfo[@"spoofSubscriberCarrierTokenBase64"];
+        NSNumber *subscriberSIMInsertedEnabledNumber = guestContainerInfo[@"spoofSubscriberSIMInsertedEnabled"];
+        NSNumber *subscriberSIMInsertedNumber = guestContainerInfo[@"spoofSubscriberSIMInserted"];
 
         if([deviceName isKindOfClass:NSString.class] && deviceName.length > 0) {
             spoofDeviceName = deviceName;
@@ -295,20 +331,23 @@ static void UIKitGuestHooksInit(void) {
             spoofLowPowerModeEnabled = lowPowerModeNumber.boolValue;
             spoofLowPowerModeEnabledSet = YES;
         }
-        if([carrierName isKindOfClass:NSString.class] && carrierName.length > 0) {
-            spoofCarrierName = carrierName;
-        }
-        if([mobileCountryCode isKindOfClass:NSString.class] && mobileCountryCode.length > 0) {
-            spoofMobileCountryCode = mobileCountryCode;
-        }
-        if([mobileNetworkCode isKindOfClass:NSString.class] && mobileNetworkCode.length > 0) {
-            spoofMobileNetworkCode = mobileNetworkCode;
-        }
-        if([isoCountryCode isKindOfClass:NSString.class] && isoCountryCode.length > 0) {
-            spoofISOCountryCode = isoCountryCode.lowercaseString;
-        }
         if([radioAccessTechnology isKindOfClass:NSString.class] && radioAccessTechnology.length > 0) {
             spoofRadioAccessTechnology = radioAccessTechnology;
+        }
+        if([subscriberIdentifier isKindOfClass:NSString.class] && subscriberIdentifier.length > 0) {
+            spoofSubscriberIdentifier = subscriberIdentifier;
+        }
+        if([subscriberCarrierTokenBase64 isKindOfClass:NSString.class] && subscriberCarrierTokenBase64.length > 0) {
+            NSData *decodedToken = [[NSData alloc] initWithBase64EncodedString:subscriberCarrierTokenBase64 options:0];
+            if(decodedToken.length > 0) {
+                spoofSubscriberCarrierToken = decodedToken;
+            }
+        }
+        if([subscriberSIMInsertedEnabledNumber isKindOfClass:NSNumber.class]) {
+            spoofSubscriberSIMInsertedEnabled = subscriberSIMInsertedEnabledNumber.boolValue;
+        }
+        if([subscriberSIMInsertedNumber isKindOfClass:NSNumber.class]) {
+            spoofSubscriberSIMInserted = subscriberSIMInsertedNumber.boolValue;
         }
 
     }
@@ -347,12 +386,18 @@ static void UIKitGuestHooksInit(void) {
         LCSwizzleClassIfPresent(NSCalendar.class, @selector(currentCalendar), @selector(hook_currentCalendar));
         LCSwizzleClassIfPresent(NSCalendar.class, @selector(autoupdatingCurrentCalendar), @selector(hook_autoupdatingCurrentCalendar));
     }
-    if(blockDeviceInfoReads || spoofCarrierName || spoofMobileCountryCode || spoofMobileNetworkCode || spoofISOCountryCode || spoofRadioAccessTechnology) {
+    if(blockDeviceInfoReads || spoofRadioAccessTechnology) {
         Class telephonyClass = NSClassFromString(@"CTTelephonyNetworkInfo");
-        LCSwizzleIfPresentWithSourceClass(telephonyClass, LCTelephonyNetworkInfoHookProvider.class, @selector(subscriberCellularProvider), @selector(hook_subscriberCellularProvider));
-        LCSwizzleIfPresentWithSourceClass(telephonyClass, LCTelephonyNetworkInfoHookProvider.class, @selector(serviceSubscriberCellularProviders), @selector(hook_serviceSubscriberCellularProviders));
-        LCSwizzleIfPresentWithSourceClass(telephonyClass, LCTelephonyNetworkInfoHookProvider.class, @selector(currentRadioAccessTechnology), @selector(hook_currentRadioAccessTechnology));
         LCSwizzleIfPresentWithSourceClass(telephonyClass, LCTelephonyNetworkInfoHookProvider.class, @selector(serviceCurrentRadioAccessTechnology), @selector(hook_serviceCurrentRadioAccessTechnology));
+    }
+    if(blockDeviceInfoReads || spoofSubscriberIdentifier || spoofSubscriberCarrierToken || spoofSubscriberSIMInsertedEnabled) {
+        Class subscriberClass = NSClassFromString(@"CTSubscriber");
+        LCSwizzleIfPresentWithSourceClass(subscriberClass, LCSubscriberHookProvider.class, NSSelectorFromString(@"identifier"), @selector(hook_identifier));
+        LCSwizzleIfPresentWithSourceClass(subscriberClass, LCSubscriberHookProvider.class, NSSelectorFromString(@"carrierToken"), @selector(hook_carrierToken));
+        LCSwizzleIfPresentWithSourceClass(subscriberClass, LCSubscriberHookProvider.class, NSSelectorFromString(@"isSIMInserted"), @selector(hook_isSIMInserted));
+
+        Class subscriberInfoClass = NSClassFromString(@"CTSubscriberInfo");
+        LCSwizzleClassIfPresentWithSourceClass(subscriberInfoClass, LCSubscriberInfoHookProvider.class, @selector(subscribers), @selector(hook_subscribers));
     }
 }
 
@@ -710,6 +755,20 @@ BOOL canAppOpenItself(NSURL* url) {
     return [LCSupportedUrlSchemes containsObject:[url.scheme lowercaseString]];
 }
 
+BOOL strictModeAllowsOpenURL(NSURL *url) {
+    if(!strictTestMode) {
+        return YES;
+    }
+    if(!url) {
+        return NO;
+    }
+    if(canAppOpenItself(url)) {
+        return YES;
+    }
+    NSString *scheme = url.scheme.lowercaseString;
+    return [scheme isEqualToString:NSUserDefaults.lcAppUrlScheme.lowercaseString];
+}
+
 // Handler for AppDelegate
 @implementation UIApplication(LiveContainerHook)
 - (void)hook__applicationOpenURLAction:(id)action payload:(NSDictionary *)payload origin:(id)origin {
@@ -840,6 +899,18 @@ BOOL canAppOpenItself(NSURL* url) {
 }
 
 - (void)hook_openURL:(NSURL *)url options:(NSDictionary<NSString *,id> *)options completionHandler:(void (^)(_Bool))completion {
+    if(strictTestMode) {
+        BOOL allowed = strictModeAllowsOpenURL(url);
+        if(!allowed) {
+            if(completion) {
+                completion(NO);
+            }
+            return;
+        }
+        [self hook_openURL:url options:options completionHandler:completion];
+        return;
+    }
+
     if(NSUserDefaults.isSideStore && ![url.scheme isEqualToString:@"livecontainer"]) {
         [self hook_openURL:url options:options completionHandler:completion];
         return;
@@ -859,6 +930,9 @@ BOOL canAppOpenItself(NSURL* url) {
     }
 }
 - (BOOL)hook_canOpenURL:(NSURL *) url {
+    if(strictTestMode) {
+        return strictModeAllowsOpenURL(url);
+    }
     return canAppOpenItself(url) || shouldRedirectOpenURLToHost(url) || [self hook_canOpenURL:url];
 }
 
@@ -969,6 +1043,18 @@ BOOL canAppOpenItself(NSURL* url) {
 }
 
 - (void)hook_openURL:(NSURL *)url options:(UISceneOpenExternalURLOptions *)options completionHandler:(void (^)(BOOL success))completion {
+    if(strictTestMode) {
+        BOOL allowed = strictModeAllowsOpenURL(url);
+        if(!allowed) {
+            if(completion) {
+                completion(NO);
+            }
+            return;
+        }
+        [self hook_openURL:url options:options completionHandler:completion];
+        return;
+    }
+
     BOOL openSelf = canAppOpenItself(url);
     BOOL redirectToHost = shouldRedirectOpenURLToHost(url);
     if(openSelf || redirectToHost) {
@@ -1046,6 +1132,29 @@ BOOL canAppOpenItself(NSURL* url) {
         }
     }
 }
+@end
+
+@implementation UIPasteboard(hook)
+
++ (UIPasteboard *)hook_generalPasteboard {
+    if(strictTestMode) {
+        return strictPrivatePasteboard ?: [self hook_generalPasteboard];
+    }
+    return [self hook_generalPasteboard];
+}
+
+@end
+
+@implementation NSURLSessionTask(hook)
+
+- (void)hook_resume {
+    if(strictTestMode) {
+        [self cancel];
+        return;
+    }
+    [self hook_resume];
+}
+
 @end
 
 @implementation UIDevice(hook)
@@ -1312,38 +1421,6 @@ BOOL canAppOpenItself(NSURL* url) {
 
 @implementation LCTelephonyNetworkInfoHookProvider
 
-- (id)hook_subscriberCellularProvider {
-    if(blockDeviceInfoReads) {
-        return nil;
-    }
-    if(spoofProfileEnabled && (spoofCarrierName || spoofMobileCountryCode || spoofMobileNetworkCode || spoofISOCountryCode)) {
-        return [LCSpoofCarrier new];
-    }
-    return [self hook_subscriberCellularProvider];
-}
-
-- (id)hook_serviceSubscriberCellularProviders {
-    if(blockDeviceInfoReads) {
-        return @{};
-    }
-    if(spoofProfileEnabled && (spoofCarrierName || spoofMobileCountryCode || spoofMobileNetworkCode || spoofISOCountryCode)) {
-        return @{
-            @"0000000100000001": [LCSpoofCarrier new]
-        };
-    }
-    return [self hook_serviceSubscriberCellularProviders];
-}
-
-- (id)hook_currentRadioAccessTechnology {
-    if(blockDeviceInfoReads) {
-        return nil;
-    }
-    if(spoofProfileEnabled && spoofRadioAccessTechnology.length > 0) {
-        return spoofRadioAccessTechnology;
-    }
-    return [self hook_currentRadioAccessTechnology];
-}
-
 - (id)hook_serviceCurrentRadioAccessTechnology {
     if(blockDeviceInfoReads) {
         return @{};
@@ -1354,6 +1431,65 @@ BOOL canAppOpenItself(NSURL* url) {
         };
     }
     return [self hook_serviceCurrentRadioAccessTechnology];
+}
+
+@end
+
+@implementation LCSubscriberHookProvider
+
+- (id)hook_identifier {
+    if(blockDeviceInfoReads) {
+        return nil;
+    }
+    if(spoofProfileEnabled && spoofSubscriberIdentifier.length > 0) {
+        return spoofSubscriberIdentifier;
+    }
+    return [self hook_identifier];
+}
+
+- (id)hook_carrierToken {
+    if(blockDeviceInfoReads) {
+        return nil;
+    }
+    if(spoofProfileEnabled && spoofSubscriberCarrierToken) {
+        return spoofSubscriberCarrierToken;
+    }
+    return [self hook_carrierToken];
+}
+
+- (BOOL)hook_isSIMInserted {
+    if(blockDeviceInfoReads) {
+        return NO;
+    }
+    if(spoofProfileEnabled && spoofSubscriberSIMInsertedEnabled) {
+        return spoofSubscriberSIMInserted;
+    }
+    return [self hook_isSIMInserted];
+}
+
+@end
+
+@implementation LCSubscriberInfoHookProvider
+
++ (id)hook_subscribers {
+    if(blockDeviceInfoReads) {
+        return @[];
+    }
+    return [self hook_subscribers];
+}
+
+@end
+
+@implementation LCNetworkExtensionStrictHookProvider
+
++ (void)hook_fetchCurrentWithCompletionHandler:(void (^)(id currentNetwork))completionHandler {
+    if(strictTestMode) {
+        if(completionHandler) {
+            completionHandler(nil);
+        }
+        return;
+    }
+    [self hook_fetchCurrentWithCompletionHandler:completionHandler];
 }
 
 @end

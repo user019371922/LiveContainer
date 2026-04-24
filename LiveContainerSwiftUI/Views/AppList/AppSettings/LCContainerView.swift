@@ -39,10 +39,10 @@ struct LCContainerView : View {
     @State private var typingSpoofBatteryLevel: String = ""
     @State private var spoofBatteryStateSelection: Int = 2
     @State private var spoofLowPowerModeEnabled: Bool = false
-    @State private var typingSpoofCarrierName: String = ""
-    @State private var typingSpoofMobileCountryCode: String = ""
-    @State private var typingSpoofMobileNetworkCode: String = ""
-    @State private var typingSpoofISOCountryCode: String = ""
+    @State private var typingSpoofSubscriberIdentifier: String = ""
+    @State private var typingSpoofSubscriberCarrierTokenBase64: String = ""
+    @State private var spoofSubscriberSIMInsertedEnabled: Bool = false
+    @State private var spoofSubscriberSIMInserted: Bool = false
     @State private var typingSpoofRadioAccessTechnology: String = "CTRadioAccessTechnologyLTE"
     @State private var inUse = false
     @State private var runningLC : String? = nil
@@ -65,10 +65,10 @@ struct LCContainerView : View {
         self._typingSpoofBatteryLevel = State(initialValue: String(format: "%.2f", container.spoofBatteryLevel))
         self._spoofBatteryStateSelection = State(initialValue: container.spoofBatteryState)
         self._spoofLowPowerModeEnabled = State(initialValue: container.spoofLowPowerModeEnabled)
-        self._typingSpoofCarrierName = State(initialValue: container.spoofCarrierName)
-        self._typingSpoofMobileCountryCode = State(initialValue: container.spoofMobileCountryCode)
-        self._typingSpoofMobileNetworkCode = State(initialValue: container.spoofMobileNetworkCode)
-        self._typingSpoofISOCountryCode = State(initialValue: container.spoofISOCountryCode)
+        self._typingSpoofSubscriberIdentifier = State(initialValue: container.spoofSubscriberIdentifier)
+        self._typingSpoofSubscriberCarrierTokenBase64 = State(initialValue: container.spoofSubscriberCarrierTokenBase64)
+        self._spoofSubscriberSIMInsertedEnabled = State(initialValue: container.spoofSubscriberSIMInsertedEnabled)
+        self._spoofSubscriberSIMInserted = State(initialValue: container.spoofSubscriberSIMInserted)
         self._typingSpoofRadioAccessTechnology = State(initialValue: container.spoofRadioAccessTechnology.isEmpty ? "CTRadioAccessTechnologyLTE" : container.spoofRadioAccessTechnology)
         self._uiDefaultDataFolder = Binding(projectedValue: uiDefaultDataFolder)
     }
@@ -97,6 +97,7 @@ struct LCContainerView : View {
                     Toggle(isOn: $container.isolateAppGroup) {
                         Text("lc.container.isolateAppGroup".loc)
                     }
+                    .disabled(container.strictTestMode)
                     .onChange(of: container.isolateAppGroup) { newValue in
                         saveContainer()
                     }
@@ -143,7 +144,26 @@ struct LCContainerView : View {
                 }
 
                 Section {
+                    Toggle("Strict Test Mode", isOn: $container.strictTestMode)
+                        .onChange(of: container.strictTestMode) { _ in
+                            saveStrictModeSettings()
+                        }
+
+                    if container.strictTestMode {
+                        Toggle("Auto-Wipe Container on App Exit", isOn: $container.strictAutoWipeOnExit)
+                            .onChange(of: container.strictAutoWipeOnExit) { _ in
+                                saveContainer()
+                            }
+                    }
+                } header: {
+                    Text("Strict Test Mode")
+                } footer: {
+                    Text("Aggressive isolation for app testing: forces app-group isolation, blocks device identity/profile reads, blocks common external URL/network paths, and can auto-wipe this container on exit.")
+                }
+
+                Section {
                     Toggle("Block Device Info Reads", isOn: $container.blockDeviceInfoReads)
+                        .disabled(container.strictTestMode)
                         .onChange(of: container.blockDeviceInfoReads) { _ in
                             saveContainer()
                         }
@@ -238,34 +258,28 @@ struct LCContainerView : View {
                             }
 
                         HStack {
-                            Text("Carrier Name")
-                            TextField("T-Mobile", text: $typingSpoofCarrierName)
+                            Text("Subscriber ID")
+                            TextField("A1B2C3D4-E5F6-47A8-9C2D-1234567890AB", text: $typingSpoofSubscriberIdentifier)
                                 .multilineTextAlignment(.trailing)
                                 .onSubmit {
                                     saveSpoofProfile()
                                 }
                         }
                         HStack {
-                            Text("MCC")
-                            TextField("310", text: $typingSpoofMobileCountryCode)
+                            Text("Carrier Token (Base64)")
+                            TextField("Optional", text: $typingSpoofSubscriberCarrierTokenBase64)
                                 .multilineTextAlignment(.trailing)
                                 .onSubmit {
                                     saveSpoofProfile()
                                 }
                         }
-                        HStack {
-                            Text("MNC")
-                            TextField("260", text: $typingSpoofMobileNetworkCode)
-                                .multilineTextAlignment(.trailing)
-                                .onSubmit {
-                                    saveSpoofProfile()
-                                }
-                        }
-                        HStack {
-                            Text("ISO Country")
-                            TextField("us", text: $typingSpoofISOCountryCode)
-                                .multilineTextAlignment(.trailing)
-                                .onSubmit {
+                        Toggle("Spoof SIM Inserted", isOn: $spoofSubscriberSIMInsertedEnabled)
+                            .onChange(of: spoofSubscriberSIMInsertedEnabled) { _ in
+                                saveSpoofProfile()
+                            }
+                        if spoofSubscriberSIMInsertedEnabled {
+                            Toggle("SIM Inserted", isOn: $spoofSubscriberSIMInserted)
+                                .onChange(of: spoofSubscriberSIMInserted) { _ in
                                     saveSpoofProfile()
                                 }
                         }
@@ -283,7 +297,7 @@ struct LCContainerView : View {
                 } header: {
                     Text("Spoof Profile")
                 } footer: {
-                    Text("Overrides UIDevice, NSProcessInfo, Locale, and TimeZone values for this container. If Block Device Info Reads is enabled, unknown/empty values are returned instead.")
+                    Text("Overrides UIDevice, NSProcessInfo, Locale/TimeZone, and modern CoreTelephony subscriber surfaces (CTSubscriber/CTSubscriberInfo + serviceCurrentRadioAccessTechnology). If Block Device Info Reads is enabled, unknown/empty values are returned instead.")
                 }
 
                 Section {
@@ -396,6 +410,10 @@ struct LCContainerView : View {
         }
         .onAppear() {
             container.reloadInfoPlist()
+            if container.strictTestMode {
+                container.isolateAppGroup = true
+                container.blockDeviceInfoReads = true
+            }
             if let spoofedIDFV = container.spoofedIdentifier {
                 typingIDFV = spoofedIDFV
             }
@@ -408,10 +426,10 @@ struct LCContainerView : View {
             typingSpoofBatteryLevel = String(format: "%.2f", container.spoofBatteryLevel)
             spoofBatteryStateSelection = container.spoofBatteryState
             spoofLowPowerModeEnabled = container.spoofLowPowerModeEnabled
-            typingSpoofCarrierName = container.spoofCarrierName
-            typingSpoofMobileCountryCode = container.spoofMobileCountryCode
-            typingSpoofMobileNetworkCode = container.spoofMobileNetworkCode
-            typingSpoofISOCountryCode = container.spoofISOCountryCode
+            typingSpoofSubscriberIdentifier = container.spoofSubscriberIdentifier
+            typingSpoofSubscriberCarrierTokenBase64 = container.spoofSubscriberCarrierTokenBase64
+            spoofSubscriberSIMInsertedEnabled = container.spoofSubscriberSIMInsertedEnabled
+            spoofSubscriberSIMInserted = container.spoofSubscriberSIMInserted
             typingSpoofRadioAccessTechnology = container.spoofRadioAccessTechnology.isEmpty ? "CTRadioAccessTechnologyLTE" : container.spoofRadioAccessTechnology
             settingsBundle = delegate.getSettingsBundle()
             runningLC = LCSharedUtils.getContainerUsingLCScheme(withFolderName: container.folderName)
@@ -469,23 +487,10 @@ struct LCContainerView : View {
             return
         }
 
-        let mcc = typingSpoofMobileCountryCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !mcc.isEmpty && !isNumeric(mcc, validLengths: [3]) {
-            errorInfo = "MCC must be 3 digits."
-            errorShow = true
-            return
-        }
-
-        let mnc = typingSpoofMobileNetworkCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !mnc.isEmpty && !isNumeric(mnc, validLengths: [2, 3]) {
-            errorInfo = "MNC must be 2 or 3 digits."
-            errorShow = true
-            return
-        }
-
-        let isoCountryCode = typingSpoofISOCountryCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !isoCountryCode.isEmpty && (isoCountryCode.count != 2 || isoCountryCode.contains(where: { !$0.isLetter })) {
-            errorInfo = "ISO Country must be 2 letters. Example: us."
+        let subscriberID = typingSpoofSubscriberIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        let subscriberTokenBase64 = typingSpoofSubscriberCarrierTokenBase64.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !subscriberTokenBase64.isEmpty && Data(base64Encoded: subscriberTokenBase64) == nil {
+            errorInfo = "Carrier Token must be valid Base64."
             errorShow = true
             return
         }
@@ -506,10 +511,10 @@ struct LCContainerView : View {
         container.spoofBatteryLevel = batteryLevel
         container.spoofBatteryState = spoofBatteryStateSelection
         container.spoofLowPowerModeEnabled = spoofLowPowerModeEnabled
-        container.spoofCarrierName = typingSpoofCarrierName.trimmingCharacters(in: .whitespacesAndNewlines)
-        container.spoofMobileCountryCode = mcc
-        container.spoofMobileNetworkCode = mnc
-        container.spoofISOCountryCode = isoCountryCode.lowercased()
+        container.spoofSubscriberIdentifier = subscriberID
+        container.spoofSubscriberCarrierTokenBase64 = subscriberTokenBase64
+        container.spoofSubscriberSIMInsertedEnabled = spoofSubscriberSIMInsertedEnabled
+        container.spoofSubscriberSIMInserted = spoofSubscriberSIMInserted
         container.spoofRadioAccessTechnology = radioTech
         saveContainer()
     }
@@ -524,10 +529,10 @@ struct LCContainerView : View {
         typingSpoofBatteryLevel = "0.85"
         spoofBatteryStateSelection = UIDevice.BatteryState.charging.rawValue
         spoofLowPowerModeEnabled = false
-        typingSpoofCarrierName = ""
-        typingSpoofMobileCountryCode = ""
-        typingSpoofMobileNetworkCode = ""
-        typingSpoofISOCountryCode = ""
+        typingSpoofSubscriberIdentifier = ""
+        typingSpoofSubscriberCarrierTokenBase64 = ""
+        spoofSubscriberSIMInsertedEnabled = false
+        spoofSubscriberSIMInserted = false
         typingSpoofRadioAccessTechnology = "CTRadioAccessTechnologyLTE"
     }
 
@@ -562,20 +567,9 @@ struct LCContainerView : View {
             UIDevice.BatteryState.charging.rawValue,
             UIDevice.BatteryState.full.rawValue
         ]
-        let carrierTemplates: [(name: String, mcc: String, mnc: String, iso: String)] = [
-            ("T-Mobile", "310", "260", "us"),
-            ("AT&T", "310", "410", "us"),
-            ("Verizon", "311", "480", "us"),
-            ("Vodafone UK", "234", "15", "gb"),
-            ("O2 UK", "234", "10", "gb"),
-            ("Orange France", "208", "01", "fr"),
-            ("Telekom.de", "262", "01", "de"),
-            ("SK Telecom", "450", "05", "kr"),
-            ("Docomo", "440", "10", "jp"),
-            ("STC", "420", "01", "sa")
-        ]
-        let selectedCarrier = carrierTemplates.randomElement() ?? ("T-Mobile", "310", "260", "us")
         let radioTechnology = availableRadioAccessTechnologies().randomElement() ?? "CTRadioAccessTechnologyLTE"
+        let tokenBytes = (0..<24).map { _ in UInt8.random(in: 0...255) }
+        let randomToken = Data(tokenBytes).base64EncodedString()
 
         typingSpoofDeviceName = selectedName
         typingSpoofDeviceModel = isPad ? "iPad" : "iPhone"
@@ -590,10 +584,10 @@ struct LCContainerView : View {
         typingSpoofBatteryLevel = String(format: "%.2f", batteryLevel)
         spoofBatteryStateSelection = batteryStateOptions.randomElement() ?? UIDevice.BatteryState.unplugged.rawValue
         spoofLowPowerModeEnabled = batteryLevel < 0.25
-        typingSpoofCarrierName = selectedCarrier.name
-        typingSpoofMobileCountryCode = selectedCarrier.mcc
-        typingSpoofMobileNetworkCode = selectedCarrier.mnc
-        typingSpoofISOCountryCode = selectedCarrier.iso
+        typingSpoofSubscriberIdentifier = UUID().uuidString.uppercased()
+        typingSpoofSubscriberCarrierTokenBase64 = randomToken
+        spoofSubscriberSIMInsertedEnabled = true
+        spoofSubscriberSIMInserted = Bool.random()
         typingSpoofRadioAccessTechnology = radioTechnology
     }
 
@@ -630,13 +624,6 @@ struct LCContainerView : View {
         ]
     }
 
-    func isNumeric(_ value: String, validLengths: Set<Int>) -> Bool {
-        if !validLengths.contains(value.count) {
-            return false
-        }
-        return value.allSatisfy { $0.isNumber }
-    }
-
     func isValidSystemVersion(_ value: String) -> Bool {
         let parts = value.split(separator: ".", omittingEmptySubsequences: false)
         guard !parts.isEmpty && parts.count <= 3 else {
@@ -658,6 +645,14 @@ struct LCContainerView : View {
         }
         
         delegate.saveContainer(container: container)
+    }
+
+    func saveStrictModeSettings() {
+        if container.strictTestMode {
+            container.isolateAppGroup = true
+            container.blockDeviceInfoReads = true
+        }
+        saveContainer()
     }
     
     func openDataFolder() {

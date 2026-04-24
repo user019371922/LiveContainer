@@ -1,10 +1,68 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #include <dlfcn.h>
+#include <stdlib.h>
 #include <objc/runtime.h>
 #include "utils.h"
 
 static NSString *const kDisabledTweaksKey = @"disabledItems";
+static NSString *const kContainerInfoFileName = @"LCContainerInfo.plist";
+static BOOL strictTestModeEnabled = NO;
+static BOOL strictAutoWipeOnExitEnabled = NO;
+static NSString *strictContainerHomePath = nil;
+
+static void LCStrictAutoWipeOnExit(void);
+
+static void LCStrictEnsureContainerDirectories(NSString *homePath) {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSArray<NSString *> *directories = @[@"Library/Caches", @"Library/Cookies", @"Documents", @"SystemData", @"tmp"];
+    for(NSString *directory in directories) {
+        NSString *path = [homePath stringByAppendingPathComponent:directory];
+        [fm createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
+    }
+}
+
+static void LCStrictWipeContainerContentsIfNeeded(void) {
+    if(!strictTestModeEnabled || !strictAutoWipeOnExitEnabled) {
+        return;
+    }
+    NSString *homePath = strictContainerHomePath;
+    if(homePath.length == 0 || [homePath isEqualToString:@"/"]) {
+        return;
+    }
+
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *containerInfoPath = [homePath stringByAppendingPathComponent:kContainerInfoFileName];
+    if(![fm fileExistsAtPath:containerInfoPath]) {
+        return;
+    }
+
+    NSError *listError = nil;
+    NSArray<NSString *> *entries = [fm contentsOfDirectoryAtPath:homePath error:&listError];
+    if(!entries) {
+        NSLog(@"[LC][StrictMode] Failed to enumerate container for auto-wipe: %@", listError.localizedDescription);
+        return;
+    }
+
+    for(NSString *entry in entries) {
+        if([entry isEqualToString:kContainerInfoFileName]) {
+            continue;
+        }
+        NSString *entryPath = [homePath stringByAppendingPathComponent:entry];
+        NSError *removeError = nil;
+        if(![fm removeItemAtPath:entryPath error:&removeError] && removeError) {
+            NSLog(@"[LC][StrictMode] Failed to remove %@ during auto-wipe: %@", entry, removeError.localizedDescription);
+        }
+    }
+
+    LCStrictEnsureContainerDirectories(homePath);
+}
+
+static void LCStrictAutoWipeOnExit(void) {
+    @autoreleasepool {
+        LCStrictWipeContainerContentsIfNeeded();
+    }
+}
 
 static NSSet<NSString *> *disabledItemsForFolder(NSURL *folderURL) {
     if (!folderURL || !folderURL.isFileURL) {
@@ -90,6 +148,17 @@ static void showDlerrAlert(NSString *error) {
 
  __attribute__((constructor))
 static void TweakLoaderConstructor() {
+    NSDictionary *guestContainerInfo = [NSUserDefaults guestContainerInfo];
+    strictTestModeEnabled = [guestContainerInfo[@"strictTestMode"] boolValue];
+    strictAutoWipeOnExitEnabled = strictTestModeEnabled && [guestContainerInfo[@"strictAutoWipeOnExit"] boolValue];
+    if(strictAutoWipeOnExitEnabled) {
+        const char *homeEnv = getenv("HOME");
+        if(homeEnv) {
+            strictContainerHomePath = [NSString stringWithUTF8String:homeEnv];
+            atexit(LCStrictAutoWipeOnExit);
+        }
+    }
+
     const char *tweakFolderC = getenv("LC_GLOBAL_TWEAKS_FOLDER");
     NSString *globalTweakFolder = @(tweakFolderC);
     unsetenv("LC_GLOBAL_TWEAKS_FOLDER");

@@ -27,6 +27,8 @@ class LCContainer : ObservableObject, Hashable {
         }
     }
     public var spoofedIdentifier: String?
+    @Published var strictTestMode: Bool
+    @Published var strictAutoWipeOnExit: Bool
     @Published var blockDeviceInfoReads: Bool
     @Published var spoofProfileEnabled: Bool
     @Published var spoofDeviceName: String
@@ -38,10 +40,10 @@ class LCContainer : ObservableObject, Hashable {
     @Published var spoofBatteryLevel: Double
     @Published var spoofBatteryState: Int
     @Published var spoofLowPowerModeEnabled: Bool
-    @Published var spoofCarrierName: String
-    @Published var spoofMobileCountryCode: String
-    @Published var spoofMobileNetworkCode: String
-    @Published var spoofISOCountryCode: String
+    @Published var spoofSubscriberIdentifier: String
+    @Published var spoofSubscriberCarrierTokenBase64: String
+    @Published var spoofSubscriberSIMInsertedEnabled: Bool
+    @Published var spoofSubscriberSIMInserted: Bool
     @Published var spoofRadioAccessTechnology: String
     private var infoDict : [String:Any]?
     public var containerURL : URL {
@@ -88,6 +90,8 @@ class LCContainer : ObservableObject, Hashable {
         isShared : Bool,
         isolateAppGroup: Bool = false,
         spoofIdentifierForVendor: Bool = false,
+        strictTestMode: Bool = false,
+        strictAutoWipeOnExit: Bool = false,
         blockDeviceInfoReads: Bool = false,
         spoofProfileEnabled: Bool = false,
         spoofDeviceName: String = "",
@@ -99,10 +103,10 @@ class LCContainer : ObservableObject, Hashable {
         spoofBatteryLevel: Double = 0.8,
         spoofBatteryState: Int = 2,
         spoofLowPowerModeEnabled: Bool = false,
-        spoofCarrierName: String = "",
-        spoofMobileCountryCode: String = "",
-        spoofMobileNetworkCode: String = "",
-        spoofISOCountryCode: String = "",
+        spoofSubscriberIdentifier: String = "",
+        spoofSubscriberCarrierTokenBase64: String = "",
+        spoofSubscriberSIMInsertedEnabled: Bool = false,
+        spoofSubscriberSIMInserted: Bool = false,
         spoofRadioAccessTechnology: String = "",
         bookmarkData: Data? = nil,
         resolvedContainerURL: URL? = nil
@@ -112,6 +116,8 @@ class LCContainer : ObservableObject, Hashable {
         self.isShared = isShared
         self.isolateAppGroup = isolateAppGroup
         self.spoofIdentifierForVendor = spoofIdentifierForVendor
+        self.strictTestMode = strictTestMode
+        self.strictAutoWipeOnExit = strictAutoWipeOnExit
         self.blockDeviceInfoReads = blockDeviceInfoReads
         self.spoofProfileEnabled = spoofProfileEnabled
         self.spoofDeviceName = spoofDeviceName
@@ -123,10 +129,10 @@ class LCContainer : ObservableObject, Hashable {
         self.spoofBatteryLevel = spoofBatteryLevel
         self.spoofBatteryState = spoofBatteryState
         self.spoofLowPowerModeEnabled = spoofLowPowerModeEnabled
-        self.spoofCarrierName = spoofCarrierName
-        self.spoofMobileCountryCode = spoofMobileCountryCode
-        self.spoofMobileNetworkCode = spoofMobileNetworkCode
-        self.spoofISOCountryCode = spoofISOCountryCode
+        self.spoofSubscriberIdentifier = spoofSubscriberIdentifier
+        self.spoofSubscriberCarrierTokenBase64 = spoofSubscriberCarrierTokenBase64
+        self.spoofSubscriberSIMInsertedEnabled = spoofSubscriberSIMInsertedEnabled
+        self.spoofSubscriberSIMInserted = spoofSubscriberSIMInserted
         self.spoofRadioAccessTechnology = spoofRadioAccessTechnology
         self.storageBookMark = bookmarkData
         self.resolvedContainerURL = resolvedContainerURL
@@ -140,6 +146,8 @@ class LCContainer : ObservableObject, Hashable {
                   isShared: isShared,
                   isolateAppGroup: false,
                   spoofIdentifierForVendor: false,
+                  strictTestMode: false,
+                  strictAutoWipeOnExit: false,
                   blockDeviceInfoReads: false,
                   spoofProfileEnabled: false,
                   spoofDeviceName: "",
@@ -151,10 +159,10 @@ class LCContainer : ObservableObject, Hashable {
                   spoofBatteryLevel: 0.8,
                   spoofBatteryState: 2,
                   spoofLowPowerModeEnabled: false,
-                  spoofCarrierName: "",
-                  spoofMobileCountryCode: "",
-                  spoofMobileNetworkCode: "",
-                  spoofISOCountryCode: "",
+                  spoofSubscriberIdentifier: "",
+                  spoofSubscriberCarrierTokenBase64: "",
+                  spoofSubscriberSIMInsertedEnabled: false,
+                  spoofSubscriberSIMInserted: false,
                   spoofRadioAccessTechnology: "",
                   bookmarkData: bookmarkData,
                   resolvedContainerURL: nil
@@ -186,6 +194,8 @@ class LCContainer : ObservableObject, Hashable {
                 isolateAppGroup = plistInfo["isolateAppGroup"] as? Bool ?? false
                 spoofIdentifierForVendor = plistInfo["spoofIdentifierForVendor"] as? Bool ?? false
                 spoofedIdentifier = plistInfo["spoofedIdentifierForVendor"] as? String
+                strictTestMode = plistInfo["strictTestMode"] as? Bool ?? false
+                strictAutoWipeOnExit = plistInfo["strictAutoWipeOnExit"] as? Bool ?? false
                 blockDeviceInfoReads = plistInfo["blockDeviceInfoReads"] as? Bool ?? false
                 spoofProfileEnabled = plistInfo["spoofProfileEnabled"] as? Bool ?? false
                 spoofDeviceName = plistInfo["spoofDeviceName"] as? String ?? ""
@@ -197,10 +207,10 @@ class LCContainer : ObservableObject, Hashable {
                 spoofBatteryLevel = plistInfo["spoofBatteryLevel"] as? Double ?? 0.8
                 spoofBatteryState = plistInfo["spoofBatteryState"] as? Int ?? 2
                 spoofLowPowerModeEnabled = plistInfo["spoofLowPowerModeEnabled"] as? Bool ?? false
-                spoofCarrierName = plistInfo["spoofCarrierName"] as? String ?? ""
-                spoofMobileCountryCode = plistInfo["spoofMobileCountryCode"] as? String ?? ""
-                spoofMobileNetworkCode = plistInfo["spoofMobileNetworkCode"] as? String ?? ""
-                spoofISOCountryCode = plistInfo["spoofISOCountryCode"] as? String ?? ""
+                spoofSubscriberIdentifier = plistInfo["spoofSubscriberIdentifier"] as? String ?? ""
+                spoofSubscriberCarrierTokenBase64 = plistInfo["spoofSubscriberCarrierTokenBase64"] as? String ?? ""
+                spoofSubscriberSIMInsertedEnabled = plistInfo["spoofSubscriberSIMInsertedEnabled"] as? Bool ?? false
+                spoofSubscriberSIMInserted = plistInfo["spoofSubscriberSIMInserted"] as? Bool ?? false
                 spoofRadioAccessTechnology = plistInfo["spoofRadioAccessTechnology"] as? String ?? ""
             }
         } catch {
@@ -226,6 +236,8 @@ class LCContainer : ObservableObject, Hashable {
             "keychainGroupId" : keychainGroupId,
             "isolateAppGroup" : isolateAppGroup,
             "spoofIdentifierForVendor": spoofIdentifierForVendor,
+            "strictTestMode": strictTestMode,
+            "strictAutoWipeOnExit": strictAutoWipeOnExit,
             "blockDeviceInfoReads": blockDeviceInfoReads,
             "spoofProfileEnabled": spoofProfileEnabled
         ]
@@ -253,18 +265,14 @@ class LCContainer : ObservableObject, Hashable {
         infoDict!["spoofBatteryLevel"] = spoofBatteryLevel
         infoDict!["spoofBatteryState"] = spoofBatteryState
         infoDict!["spoofLowPowerModeEnabled"] = spoofLowPowerModeEnabled
-        if !spoofCarrierName.isEmpty {
-            infoDict!["spoofCarrierName"] = spoofCarrierName
+        if !spoofSubscriberIdentifier.isEmpty {
+            infoDict!["spoofSubscriberIdentifier"] = spoofSubscriberIdentifier
         }
-        if !spoofMobileCountryCode.isEmpty {
-            infoDict!["spoofMobileCountryCode"] = spoofMobileCountryCode
+        if !spoofSubscriberCarrierTokenBase64.isEmpty {
+            infoDict!["spoofSubscriberCarrierTokenBase64"] = spoofSubscriberCarrierTokenBase64
         }
-        if !spoofMobileNetworkCode.isEmpty {
-            infoDict!["spoofMobileNetworkCode"] = spoofMobileNetworkCode
-        }
-        if !spoofISOCountryCode.isEmpty {
-            infoDict!["spoofISOCountryCode"] = spoofISOCountryCode
-        }
+        infoDict!["spoofSubscriberSIMInsertedEnabled"] = spoofSubscriberSIMInsertedEnabled
+        infoDict!["spoofSubscriberSIMInserted"] = spoofSubscriberSIMInserted
         if !spoofRadioAccessTechnology.isEmpty {
             infoDict!["spoofRadioAccessTechnology"] = spoofRadioAccessTechnology
         }
@@ -295,6 +303,8 @@ class LCContainer : ObservableObject, Hashable {
         isolateAppGroup = infoDict["isolateAppGroup"] as? Bool ?? false
         spoofIdentifierForVendor = infoDict["spoofIdentifierForVendor"] as? Bool ?? false
         spoofedIdentifier = infoDict["spoofedIdentifierForVendor"] as? String
+        strictTestMode = infoDict["strictTestMode"] as? Bool ?? false
+        strictAutoWipeOnExit = infoDict["strictAutoWipeOnExit"] as? Bool ?? false
         blockDeviceInfoReads = infoDict["blockDeviceInfoReads"] as? Bool ?? false
         spoofProfileEnabled = infoDict["spoofProfileEnabled"] as? Bool ?? false
         spoofDeviceName = infoDict["spoofDeviceName"] as? String ?? ""
@@ -306,10 +316,10 @@ class LCContainer : ObservableObject, Hashable {
         spoofBatteryLevel = infoDict["spoofBatteryLevel"] as? Double ?? 0.8
         spoofBatteryState = infoDict["spoofBatteryState"] as? Int ?? 2
         spoofLowPowerModeEnabled = infoDict["spoofLowPowerModeEnabled"] as? Bool ?? false
-        spoofCarrierName = infoDict["spoofCarrierName"] as? String ?? ""
-        spoofMobileCountryCode = infoDict["spoofMobileCountryCode"] as? String ?? ""
-        spoofMobileNetworkCode = infoDict["spoofMobileNetworkCode"] as? String ?? ""
-        spoofISOCountryCode = infoDict["spoofISOCountryCode"] as? String ?? ""
+        spoofSubscriberIdentifier = infoDict["spoofSubscriberIdentifier"] as? String ?? ""
+        spoofSubscriberCarrierTokenBase64 = infoDict["spoofSubscriberCarrierTokenBase64"] as? String ?? ""
+        spoofSubscriberSIMInsertedEnabled = infoDict["spoofSubscriberSIMInsertedEnabled"] as? Bool ?? false
+        spoofSubscriberSIMInserted = infoDict["spoofSubscriberSIMInserted"] as? Bool ?? false
         spoofRadioAccessTechnology = infoDict["spoofRadioAccessTechnology"] as? String ?? ""
     }
     
