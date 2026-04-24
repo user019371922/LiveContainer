@@ -1035,45 +1035,35 @@ func lcClearAppCacheAndTemp(bundlePath: String, containerTargets: [LCAppContaine
 
 func lcClearDirectoryContentsIfExists(at directoryURL: URL) throws -> LCCacheCleanupResult {
     let fm = FileManager.default
-    var isDirectory: ObjCBool = false
-    guard fm.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory) else {
+    guard fm.fileExists(atPath: directoryURL.path) else {
         return .empty
     }
-    guard isDirectory.boolValue else {
-        let removedSize = (try? lcCalculateItemSize(at: directoryURL)) ?? 0
-        do {
-            try fm.removeItem(at: directoryURL)
-        } catch {
-            if lcIsNoSuchFileError(error) {
-                return .empty
-            }
-            throw error
-        }
-        return LCCacheCleanupResult(removedItemCount: 1, removedBytes: removedSize)
-    }
 
-    let items: [URL]
+    // Some apps expose `tmp`/cache in ways that fail directory enumeration.
+    // Reset the whole path (remove + recreate) instead of opening/listing children.
+    let removedSize = (try? lcCalculateItemSize(at: directoryURL)) ?? 0
+    let removedCount = removedSize > 0 ? 1 : 0
+
     do {
-        items = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
+        try fm.removeItem(at: directoryURL)
     } catch {
         if lcIsNoSuchFileError(error) {
             return .empty
         }
         throw error
     }
-    var removedBytes: Int64 = 0
-    for item in items {
-        removedBytes += (try? lcCalculateItemSize(at: item)) ?? 0
-        do {
-            try fm.removeItem(at: item)
-        } catch {
-            if lcIsNoSuchFileError(error) {
-                continue
-            }
-            throw error
+
+    do {
+        try fm.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    } catch {
+        // If parent vanished concurrently, treat as already cleared.
+        if lcIsNoSuchFileError(error) {
+            return .empty
         }
+        throw error
     }
-    return LCCacheCleanupResult(removedItemCount: items.count, removedBytes: removedBytes)
+
+    return LCCacheCleanupResult(removedItemCount: removedCount, removedBytes: removedSize)
 }
 
 func lcRemoveItemIfExists(at url: URL) throws -> LCCacheCleanupResult {
