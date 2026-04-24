@@ -9,6 +9,7 @@ UIInterfaceOrientation LCOrientationLock = UIInterfaceOrientationUnknown;
 NSMutableArray<NSString*>* LCSupportedUrlSchemes = nil;
 NSUUID* idForVendorUUID = nil;
 BOOL spoofProfileEnabled = NO;
+BOOL blockDeviceInfoReads = NO;
 NSString *spoofDeviceName = nil;
 NSString *spoofDeviceModel = nil;
 NSString *spoofSystemName = nil;
@@ -17,6 +18,51 @@ NSLocale *spoofLocale = nil;
 NSTimeZone *spoofTimeZone = nil;
 NSOperatingSystemVersion spoofOperatingSystemVersion;
 BOOL spoofOperatingSystemVersionValid = NO;
+float spoofBatteryLevel = -1.0f;
+NSInteger spoofBatteryState = UIDeviceBatteryStateUnknown;
+BOOL spoofLowPowerModeEnabled = NO;
+BOOL spoofLowPowerModeEnabledSet = NO;
+NSString *spoofCarrierName = nil;
+NSString *spoofMobileCountryCode = nil;
+NSString *spoofMobileNetworkCode = nil;
+NSString *spoofISOCountryCode = nil;
+NSString *spoofRadioAccessTechnology = nil;
+
+@interface CTTelephonyNetworkInfo : NSObject
+@end
+
+@interface LCSpoofCarrier : NSObject
+@end
+
+@implementation LCSpoofCarrier
+- (NSString *)carrierName { return spoofCarrierName; }
+- (NSString *)mobileCountryCode { return spoofMobileCountryCode; }
+- (NSString *)mobileNetworkCode { return spoofMobileNetworkCode; }
+- (NSString *)isoCountryCode { return spoofISOCountryCode; }
+- (BOOL)allowsVOIP { return YES; }
+@end
+
+static void LCSwizzleIfPresent(Class cls, SEL originalAction, SEL swizzledAction) {
+    if(!cls) {
+        return;
+    }
+    Method originalMethod = class_getInstanceMethod(cls, originalAction);
+    Method swizzledMethod = class_getInstanceMethod(cls, swizzledAction);
+    if(originalMethod && swizzledMethod) {
+        method_exchangeImplementations(originalMethod, swizzledMethod);
+    }
+}
+
+static void LCSwizzleClassIfPresent(Class cls, SEL originalAction, SEL swizzledAction) {
+    if(!cls) {
+        return;
+    }
+    Method originalMethod = class_getClassMethod(cls, originalAction);
+    Method swizzledMethod = class_getClassMethod(cls, swizzledAction);
+    if(originalMethod && swizzledMethod) {
+        method_exchangeImplementations(originalMethod, swizzledMethod);
+    }
+}
 
 static BOOL LCParseVersionPart(NSString *part, NSInteger *outValue) {
     if(![part isKindOfClass:NSString.class] || part.length == 0) {
@@ -74,6 +120,14 @@ static NSInteger LCCompareOSVersion(NSOperatingSystemVersion lhs, NSOperatingSys
     return 0;
 }
 
+static NSTimeZone *LCBlockedTimeZone(void) {
+    return [NSTimeZone timeZoneWithAbbreviation:@"GMT"] ?: [NSTimeZone systemTimeZone];
+}
+
+static NSLocale *LCBlockedLocale(void) {
+    return [[NSLocale alloc] initWithLocaleIdentifier:@"und"];
+}
+
 static UIWindowScene *LCForegroundWindowScene(void) {
     UIWindowScene *fallbackScene = nil;
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
@@ -113,7 +167,7 @@ static UIWindowLevel LCOverlayWindowLevel(void) {
 }
 
 __attribute__((constructor))
-static void UIKitGuestHooksInit() {
+static void UIKitGuestHooksInit(void) {
     if(!NSUserDefaults.lcGuestAppId) return;
     swizzle(UIApplication.class, @selector(_applicationOpenURLAction:payload:origin:), @selector(hook__applicationOpenURLAction:payload:origin:));
     swizzle(UIApplication.class, @selector(_connectUISceneFromFBSScene:transitionContext:), @selector(hook__connectUISceneFromFBSScene:transitionContext:));
@@ -144,14 +198,17 @@ static void UIKitGuestHooksInit() {
 
     }
     NSDictionary* guestContainerInfo = [NSUserDefaults guestContainerInfo];
-    if(guestContainerInfo[@"spoofIdentifierForVendor"]) {
+    blockDeviceInfoReads = [guestContainerInfo[@"blockDeviceInfoReads"] boolValue];
+
+    BOOL shouldSpoofIdentifierForVendor = [guestContainerInfo[@"spoofIdentifierForVendor"] boolValue];
+    if(shouldSpoofIdentifierForVendor) {
         NSString* idForVendorStr = guestContainerInfo[@"spoofedIdentifierForVendor"];
         if([idForVendorStr isKindOfClass:NSString.class]) {
             idForVendorUUID = [[NSUUID UUID] initWithUUIDString:idForVendorStr];
-            if(idForVendorUUID) {
-                swizzle(UIDevice.class, @selector(identifierForVendor), @selector(hook_identifierForVendor));
-            }
         }
+    }
+    if(blockDeviceInfoReads || (shouldSpoofIdentifierForVendor && idForVendorUUID != nil)) {
+        swizzle(UIDevice.class, @selector(identifierForVendor), @selector(hook_identifierForVendor));
     }
 
     if([guestContainerInfo[@"spoofProfileEnabled"] boolValue]) {
@@ -162,6 +219,14 @@ static void UIKitGuestHooksInit() {
         NSString *systemVersion = guestContainerInfo[@"spoofSystemVersion"];
         NSString *localeIdentifier = guestContainerInfo[@"spoofLocaleIdentifier"];
         NSString *timeZoneIdentifier = guestContainerInfo[@"spoofTimeZoneIdentifier"];
+        NSNumber *batteryLevelNumber = guestContainerInfo[@"spoofBatteryLevel"];
+        NSNumber *batteryStateNumber = guestContainerInfo[@"spoofBatteryState"];
+        NSNumber *lowPowerModeNumber = guestContainerInfo[@"spoofLowPowerModeEnabled"];
+        NSString *carrierName = guestContainerInfo[@"spoofCarrierName"];
+        NSString *mobileCountryCode = guestContainerInfo[@"spoofMobileCountryCode"];
+        NSString *mobileNetworkCode = guestContainerInfo[@"spoofMobileNetworkCode"];
+        NSString *isoCountryCode = guestContainerInfo[@"spoofISOCountryCode"];
+        NSString *radioAccessTechnology = guestContainerInfo[@"spoofRadioAccessTechnology"];
 
         if([deviceName isKindOfClass:NSString.class] && deviceName.length > 0) {
             spoofDeviceName = deviceName;
@@ -188,30 +253,85 @@ static void UIKitGuestHooksInit() {
             NSTimeZone *candidateTimeZone = [NSTimeZone timeZoneWithName:timeZoneIdentifier];
             if(candidateTimeZone) {
                 spoofTimeZone = candidateTimeZone;
-                [NSTimeZone setDefaultTimeZone:candidateTimeZone];
+                if(!blockDeviceInfoReads) {
+                    [NSTimeZone setDefaultTimeZone:candidateTimeZone];
+                }
             }
         }
+        if([batteryLevelNumber isKindOfClass:NSNumber.class]) {
+            float level = batteryLevelNumber.floatValue;
+            if(level >= 0.0f && level <= 1.0f) {
+                spoofBatteryLevel = level;
+            }
+        }
+        if([batteryStateNumber isKindOfClass:NSNumber.class]) {
+            NSInteger value = batteryStateNumber.integerValue;
+            if(value >= UIDeviceBatteryStateUnknown && value <= UIDeviceBatteryStateFull) {
+                spoofBatteryState = value;
+            }
+        }
+        if([lowPowerModeNumber isKindOfClass:NSNumber.class]) {
+            spoofLowPowerModeEnabled = lowPowerModeNumber.boolValue;
+            spoofLowPowerModeEnabledSet = YES;
+        }
+        if([carrierName isKindOfClass:NSString.class] && carrierName.length > 0) {
+            spoofCarrierName = carrierName;
+        }
+        if([mobileCountryCode isKindOfClass:NSString.class] && mobileCountryCode.length > 0) {
+            spoofMobileCountryCode = mobileCountryCode;
+        }
+        if([mobileNetworkCode isKindOfClass:NSString.class] && mobileNetworkCode.length > 0) {
+            spoofMobileNetworkCode = mobileNetworkCode;
+        }
+        if([isoCountryCode isKindOfClass:NSString.class] && isoCountryCode.length > 0) {
+            spoofISOCountryCode = isoCountryCode.lowercaseString;
+        }
+        if([radioAccessTechnology isKindOfClass:NSString.class] && radioAccessTechnology.length > 0) {
+            spoofRadioAccessTechnology = radioAccessTechnology;
+        }
 
-        if(spoofDeviceName || spoofDeviceModel || spoofSystemName || spoofSystemVersion) {
-            swizzle(UIDevice.class, @selector(name), @selector(hook_name));
-            swizzle(UIDevice.class, @selector(model), @selector(hook_model));
-            swizzle(UIDevice.class, @selector(systemName), @selector(hook_systemName));
-            swizzle(UIDevice.class, @selector(systemVersion), @selector(hook_systemVersion));
-        }
-        if(spoofOperatingSystemVersionValid || spoofSystemVersion) {
-            swizzle(NSProcessInfo.class, @selector(operatingSystemVersion), @selector(hook_operatingSystemVersion));
-            swizzle(NSProcessInfo.class, @selector(operatingSystemVersionString), @selector(hook_operatingSystemVersionString));
-            swizzle(NSProcessInfo.class, @selector(isOperatingSystemAtLeastVersion:), @selector(hook_isOperatingSystemAtLeastVersion:));
-        }
-        if(spoofLocale) {
-            swizzleClassMethod(NSLocale.class, @selector(currentLocale), @selector(hook_currentLocale));
-            swizzleClassMethod(NSLocale.class, @selector(autoupdatingCurrentLocale), @selector(hook_autoupdatingCurrentLocale));
-        }
-        if(spoofTimeZone) {
-            swizzleClassMethod(NSTimeZone.class, @selector(localTimeZone), @selector(hook_localTimeZone));
-            swizzleClassMethod(NSTimeZone.class, @selector(systemTimeZone), @selector(hook_systemTimeZone));
-            swizzleClassMethod(NSTimeZone.class, @selector(defaultTimeZone), @selector(hook_defaultTimeZone));
-        }
+    }
+
+    if(blockDeviceInfoReads || spoofDeviceName || spoofDeviceModel || spoofSystemName || spoofSystemVersion) {
+        swizzle(UIDevice.class, @selector(name), @selector(hook_name));
+        swizzle(UIDevice.class, @selector(model), @selector(hook_model));
+        swizzle(UIDevice.class, @selector(localizedModel), @selector(hook_localizedModel));
+        swizzle(UIDevice.class, @selector(systemName), @selector(hook_systemName));
+        swizzle(UIDevice.class, @selector(systemVersion), @selector(hook_systemVersion));
+    }
+    if(blockDeviceInfoReads || spoofBatteryLevel >= 0.0f || spoofBatteryState != UIDeviceBatteryStateUnknown) {
+        swizzle(UIDevice.class, @selector(batteryLevel), @selector(hook_batteryLevel));
+        swizzle(UIDevice.class, @selector(batteryState), @selector(hook_batteryState));
+        swizzle(UIDevice.class, @selector(isBatteryMonitoringEnabled), @selector(hook_isBatteryMonitoringEnabled));
+    }
+    if(blockDeviceInfoReads || spoofOperatingSystemVersionValid || spoofSystemVersion) {
+        swizzle(NSProcessInfo.class, @selector(operatingSystemVersion), @selector(hook_operatingSystemVersion));
+        swizzle(NSProcessInfo.class, @selector(operatingSystemVersionString), @selector(hook_operatingSystemVersionString));
+        swizzle(NSProcessInfo.class, @selector(isOperatingSystemAtLeastVersion:), @selector(hook_isOperatingSystemAtLeastVersion:));
+    }
+    if(blockDeviceInfoReads || spoofLowPowerModeEnabledSet) {
+        swizzle(NSProcessInfo.class, @selector(isLowPowerModeEnabled), @selector(hook_isLowPowerModeEnabled));
+    }
+    if(blockDeviceInfoReads || spoofLocale) {
+        LCSwizzleClassIfPresent(NSLocale.class, @selector(currentLocale), @selector(hook_currentLocale));
+        LCSwizzleClassIfPresent(NSLocale.class, @selector(autoupdatingCurrentLocale), @selector(hook_autoupdatingCurrentLocale));
+        LCSwizzleClassIfPresent(NSLocale.class, @selector(systemLocale), @selector(hook_systemLocale));
+        LCSwizzleClassIfPresent(NSLocale.class, @selector(preferredLanguages), @selector(hook_preferredLanguages));
+    }
+    if(blockDeviceInfoReads || spoofTimeZone) {
+        LCSwizzleClassIfPresent(NSTimeZone.class, @selector(localTimeZone), @selector(hook_localTimeZone));
+        LCSwizzleClassIfPresent(NSTimeZone.class, @selector(systemTimeZone), @selector(hook_systemTimeZone));
+        LCSwizzleClassIfPresent(NSTimeZone.class, @selector(defaultTimeZone), @selector(hook_defaultTimeZone));
+        LCSwizzleClassIfPresent(NSTimeZone.class, @selector(autoupdatingCurrentTimeZone), @selector(hook_autoupdatingCurrentTimeZone));
+        LCSwizzleClassIfPresent(NSCalendar.class, @selector(currentCalendar), @selector(hook_currentCalendar));
+        LCSwizzleClassIfPresent(NSCalendar.class, @selector(autoupdatingCurrentCalendar), @selector(hook_autoupdatingCurrentCalendar));
+    }
+    if(blockDeviceInfoReads || spoofCarrierName || spoofMobileCountryCode || spoofMobileNetworkCode || spoofISOCountryCode || spoofRadioAccessTechnology) {
+        Class telephonyClass = NSClassFromString(@"CTTelephonyNetworkInfo");
+        LCSwizzleIfPresent(telephonyClass, @selector(subscriberCellularProvider), @selector(hook_subscriberCellularProvider));
+        LCSwizzleIfPresent(telephonyClass, @selector(serviceSubscriberCellularProviders), @selector(hook_serviceSubscriberCellularProviders));
+        LCSwizzleIfPresent(telephonyClass, @selector(currentRadioAccessTechnology), @selector(hook_currentRadioAccessTechnology));
+        LCSwizzleIfPresent(telephonyClass, @selector(serviceCurrentRadioAccessTechnology), @selector(hook_serviceCurrentRadioAccessTechnology));
     }
 }
 
@@ -910,10 +1030,19 @@ BOOL canAppOpenItself(NSURL* url) {
 @implementation UIDevice(hook)
 
 - (NSUUID*)hook_identifierForVendor {
-    return idForVendorUUID;
+    if(blockDeviceInfoReads) {
+        return nil;
+    }
+    if(idForVendorUUID) {
+        return idForVendorUUID;
+    }
+    return [self hook_identifierForVendor];
 }
 
 - (NSString *)hook_name {
+    if(blockDeviceInfoReads) {
+        return @"Unknown";
+    }
     if(spoofProfileEnabled && spoofDeviceName.length > 0) {
         return spoofDeviceName;
     }
@@ -921,13 +1050,29 @@ BOOL canAppOpenItself(NSURL* url) {
 }
 
 - (NSString *)hook_model {
+    if(blockDeviceInfoReads) {
+        return @"Unknown";
+    }
     if(spoofProfileEnabled && spoofDeviceModel.length > 0) {
         return spoofDeviceModel;
     }
     return [self hook_model];
 }
 
+- (NSString *)hook_localizedModel {
+    if(blockDeviceInfoReads) {
+        return @"Unknown";
+    }
+    if(spoofProfileEnabled && spoofDeviceModel.length > 0) {
+        return spoofDeviceModel;
+    }
+    return [self hook_localizedModel];
+}
+
 - (NSString *)hook_systemName {
+    if(blockDeviceInfoReads) {
+        return @"Unknown";
+    }
     if(spoofProfileEnabled && spoofSystemName.length > 0) {
         return spoofSystemName;
     }
@@ -935,10 +1080,43 @@ BOOL canAppOpenItself(NSURL* url) {
 }
 
 - (NSString *)hook_systemVersion {
+    if(blockDeviceInfoReads) {
+        return @"0.0";
+    }
     if(spoofProfileEnabled && spoofSystemVersion.length > 0) {
         return spoofSystemVersion;
     }
     return [self hook_systemVersion];
+}
+
+- (float)hook_batteryLevel {
+    if(blockDeviceInfoReads) {
+        return -1.0f;
+    }
+    if(spoofProfileEnabled && spoofBatteryLevel >= 0.0f) {
+        return spoofBatteryLevel;
+    }
+    return [self hook_batteryLevel];
+}
+
+- (UIDeviceBatteryState)hook_batteryState {
+    if(blockDeviceInfoReads) {
+        return UIDeviceBatteryStateUnknown;
+    }
+    if(spoofProfileEnabled && spoofBatteryState >= UIDeviceBatteryStateUnknown && spoofBatteryState <= UIDeviceBatteryStateFull) {
+        return (UIDeviceBatteryState)spoofBatteryState;
+    }
+    return [self hook_batteryState];
+}
+
+- (BOOL)hook_isBatteryMonitoringEnabled {
+    if(blockDeviceInfoReads) {
+        return NO;
+    }
+    if(spoofProfileEnabled && (spoofBatteryLevel >= 0.0f || spoofBatteryState != UIDeviceBatteryStateUnknown)) {
+        return YES;
+    }
+    return [self hook_isBatteryMonitoringEnabled];
 }
 
 @end
@@ -946,6 +1124,9 @@ BOOL canAppOpenItself(NSURL* url) {
 @implementation NSProcessInfo(hook)
 
 - (NSOperatingSystemVersion)hook_operatingSystemVersion {
+    if(blockDeviceInfoReads) {
+        return (NSOperatingSystemVersion){ .majorVersion = 0, .minorVersion = 0, .patchVersion = 0 };
+    }
     if(spoofProfileEnabled && spoofOperatingSystemVersionValid) {
         return spoofOperatingSystemVersion;
     }
@@ -953,6 +1134,9 @@ BOOL canAppOpenItself(NSURL* url) {
 }
 
 - (NSString *)hook_operatingSystemVersionString {
+    if(blockDeviceInfoReads) {
+        return @"Unknown";
+    }
     if(spoofProfileEnabled && spoofSystemVersion.length > 0) {
         NSString *name = spoofSystemName.length > 0 ? spoofSystemName : @"iOS";
         return [NSString stringWithFormat:@"%@ %@", name, spoofSystemVersion];
@@ -961,10 +1145,23 @@ BOOL canAppOpenItself(NSURL* url) {
 }
 
 - (BOOL)hook_isOperatingSystemAtLeastVersion:(NSOperatingSystemVersion)version {
+    if(blockDeviceInfoReads) {
+        return NO;
+    }
     if(spoofProfileEnabled && spoofOperatingSystemVersionValid) {
         return LCCompareOSVersion(spoofOperatingSystemVersion, version) >= 0;
     }
     return [self hook_isOperatingSystemAtLeastVersion:version];
+}
+
+- (BOOL)hook_isLowPowerModeEnabled {
+    if(blockDeviceInfoReads) {
+        return NO;
+    }
+    if(spoofProfileEnabled && spoofLowPowerModeEnabledSet) {
+        return spoofLowPowerModeEnabled;
+    }
+    return [self hook_isLowPowerModeEnabled];
 }
 
 @end
@@ -972,6 +1169,9 @@ BOOL canAppOpenItself(NSURL* url) {
 @implementation NSLocale(hook)
 
 + (NSLocale *)hook_currentLocale {
+    if(blockDeviceInfoReads) {
+        return LCBlockedLocale();
+    }
     if(spoofProfileEnabled && spoofLocale) {
         return spoofLocale;
     }
@@ -979,10 +1179,36 @@ BOOL canAppOpenItself(NSURL* url) {
 }
 
 + (NSLocale *)hook_autoupdatingCurrentLocale {
+    if(blockDeviceInfoReads) {
+        return LCBlockedLocale();
+    }
     if(spoofProfileEnabled && spoofLocale) {
         return spoofLocale;
     }
     return [self hook_autoupdatingCurrentLocale];
+}
+
++ (NSLocale *)hook_systemLocale {
+    if(blockDeviceInfoReads) {
+        return LCBlockedLocale();
+    }
+    if(spoofProfileEnabled && spoofLocale) {
+        return spoofLocale;
+    }
+    return [self hook_systemLocale];
+}
+
++ (NSArray<NSString *> *)hook_preferredLanguages {
+    if(blockDeviceInfoReads) {
+        return @[@"und"];
+    }
+    if(spoofProfileEnabled && spoofLocale) {
+        NSString *languageIdentifier = [spoofLocale objectForKey:NSLocaleIdentifier];
+        if(languageIdentifier.length > 0) {
+            return @[languageIdentifier];
+        }
+    }
+    return [self hook_preferredLanguages];
 }
 
 @end
@@ -990,6 +1216,9 @@ BOOL canAppOpenItself(NSURL* url) {
 @implementation NSTimeZone(hook)
 
 + (NSTimeZone *)hook_localTimeZone {
+    if(blockDeviceInfoReads) {
+        return LCBlockedTimeZone();
+    }
     if(spoofProfileEnabled && spoofTimeZone) {
         return spoofTimeZone;
     }
@@ -997,6 +1226,9 @@ BOOL canAppOpenItself(NSURL* url) {
 }
 
 + (NSTimeZone *)hook_systemTimeZone {
+    if(blockDeviceInfoReads) {
+        return LCBlockedTimeZone();
+    }
     if(spoofProfileEnabled && spoofTimeZone) {
         return spoofTimeZone;
     }
@@ -1004,10 +1236,103 @@ BOOL canAppOpenItself(NSURL* url) {
 }
 
 + (NSTimeZone *)hook_defaultTimeZone {
+    if(blockDeviceInfoReads) {
+        return LCBlockedTimeZone();
+    }
     if(spoofProfileEnabled && spoofTimeZone) {
         return spoofTimeZone;
     }
     return [self hook_defaultTimeZone];
+}
+
++ (NSTimeZone *)hook_autoupdatingCurrentTimeZone {
+    if(blockDeviceInfoReads) {
+        return LCBlockedTimeZone();
+    }
+    if(spoofProfileEnabled && spoofTimeZone) {
+        return spoofTimeZone;
+    }
+    return [self hook_autoupdatingCurrentTimeZone];
+}
+
+@end
+
+@implementation NSCalendar(hook)
+
++ (NSCalendar *)hook_currentCalendar {
+    if(blockDeviceInfoReads) {
+        NSCalendar *calendar = [self hook_currentCalendar];
+        calendar.timeZone = LCBlockedTimeZone();
+        return calendar;
+    }
+    if(spoofProfileEnabled && spoofTimeZone) {
+        NSCalendar *calendar = [self hook_currentCalendar];
+        calendar.timeZone = spoofTimeZone;
+        return calendar;
+    }
+    return [self hook_currentCalendar];
+}
+
++ (NSCalendar *)hook_autoupdatingCurrentCalendar {
+    if(blockDeviceInfoReads) {
+        NSCalendar *calendar = [self hook_autoupdatingCurrentCalendar];
+        calendar.timeZone = LCBlockedTimeZone();
+        return calendar;
+    }
+    if(spoofProfileEnabled && spoofTimeZone) {
+        NSCalendar *calendar = [self hook_autoupdatingCurrentCalendar];
+        calendar.timeZone = spoofTimeZone;
+        return calendar;
+    }
+    return [self hook_autoupdatingCurrentCalendar];
+}
+
+@end
+
+@implementation CTTelephonyNetworkInfo(hook)
+
+- (id)hook_subscriberCellularProvider {
+    if(blockDeviceInfoReads) {
+        return nil;
+    }
+    if(spoofProfileEnabled && (spoofCarrierName || spoofMobileCountryCode || spoofMobileNetworkCode || spoofISOCountryCode)) {
+        return [LCSpoofCarrier new];
+    }
+    return [self hook_subscriberCellularProvider];
+}
+
+- (id)hook_serviceSubscriberCellularProviders {
+    if(blockDeviceInfoReads) {
+        return @{};
+    }
+    if(spoofProfileEnabled && (spoofCarrierName || spoofMobileCountryCode || spoofMobileNetworkCode || spoofISOCountryCode)) {
+        return @{
+            @"0000000100000001": [LCSpoofCarrier new]
+        };
+    }
+    return [self hook_serviceSubscriberCellularProviders];
+}
+
+- (id)hook_currentRadioAccessTechnology {
+    if(blockDeviceInfoReads) {
+        return nil;
+    }
+    if(spoofProfileEnabled && spoofRadioAccessTechnology.length > 0) {
+        return spoofRadioAccessTechnology;
+    }
+    return [self hook_currentRadioAccessTechnology];
+}
+
+- (id)hook_serviceCurrentRadioAccessTechnology {
+    if(blockDeviceInfoReads) {
+        return @{};
+    }
+    if(spoofProfileEnabled && spoofRadioAccessTechnology.length > 0) {
+        return @{
+            @"0000000100000001": spoofRadioAccessTechnology
+        };
+    }
+    return [self hook_serviceCurrentRadioAccessTechnology];
 }
 
 @end

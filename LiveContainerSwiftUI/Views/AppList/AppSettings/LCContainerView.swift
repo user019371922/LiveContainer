@@ -36,6 +36,14 @@ struct LCContainerView : View {
     @State private var typingSpoofSystemVersion: String = ""
     @State private var typingSpoofLocaleIdentifier: String = ""
     @State private var typingSpoofTimeZoneIdentifier: String = ""
+    @State private var typingSpoofBatteryLevel: String = ""
+    @State private var spoofBatteryStateSelection: Int = 2
+    @State private var spoofLowPowerModeEnabled: Bool = false
+    @State private var typingSpoofCarrierName: String = ""
+    @State private var typingSpoofMobileCountryCode: String = ""
+    @State private var typingSpoofMobileNetworkCode: String = ""
+    @State private var typingSpoofISOCountryCode: String = ""
+    @State private var typingSpoofRadioAccessTechnology: String = "CTRadioAccessTechnologyLTE"
     @State private var inUse = false
     @State private var runningLC : String? = nil
     
@@ -54,6 +62,14 @@ struct LCContainerView : View {
         self._typingSpoofSystemVersion = State(initialValue: container.spoofSystemVersion)
         self._typingSpoofLocaleIdentifier = State(initialValue: container.spoofLocaleIdentifier)
         self._typingSpoofTimeZoneIdentifier = State(initialValue: container.spoofTimeZoneIdentifier)
+        self._typingSpoofBatteryLevel = State(initialValue: String(format: "%.2f", container.spoofBatteryLevel))
+        self._spoofBatteryStateSelection = State(initialValue: container.spoofBatteryState)
+        self._spoofLowPowerModeEnabled = State(initialValue: container.spoofLowPowerModeEnabled)
+        self._typingSpoofCarrierName = State(initialValue: container.spoofCarrierName)
+        self._typingSpoofMobileCountryCode = State(initialValue: container.spoofMobileCountryCode)
+        self._typingSpoofMobileNetworkCode = State(initialValue: container.spoofMobileNetworkCode)
+        self._typingSpoofISOCountryCode = State(initialValue: container.spoofISOCountryCode)
+        self._typingSpoofRadioAccessTechnology = State(initialValue: container.spoofRadioAccessTechnology.isEmpty ? "CTRadioAccessTechnologyLTE" : container.spoofRadioAccessTechnology)
         self._uiDefaultDataFolder = Binding(projectedValue: uiDefaultDataFolder)
     }
     
@@ -127,15 +143,21 @@ struct LCContainerView : View {
                 }
 
                 Section {
+                    Toggle("Block Device Info Reads", isOn: $container.blockDeviceInfoReads)
+                        .onChange(of: container.blockDeviceInfoReads) { _ in
+                            saveContainer()
+                        }
+
                     Toggle("Advanced Spoof Profile", isOn: $container.spoofProfileEnabled)
                         .onChange(of: container.spoofProfileEnabled) { _ in
-                            if container.spoofProfileEnabled && typingSpoofSystemVersion.isEmpty {
-                                applyCurrentDeviceProfileValues()
+                            if container.spoofProfileEnabled {
+                                applyRandomDeviceProfileValues()
                             }
                             saveSpoofProfile()
                         }
 
                     if container.spoofProfileEnabled {
+                        Group {
                         HStack {
                             Text("Device Name")
                             TextField("iPhone", text: $typingSpoofDeviceName)
@@ -188,11 +210,80 @@ struct LCContainerView : View {
                             applyCurrentDeviceProfileValues()
                             saveSpoofProfile()
                         }
+                        Button("Generate Random Profile") {
+                            applyRandomDeviceProfileValues()
+                            saveSpoofProfile()
+                        }
+
+                        HStack {
+                            Text("Battery Level")
+                            TextField("0.83", text: $typingSpoofBatteryLevel)
+                                .multilineTextAlignment(.trailing)
+                                .onSubmit {
+                                    saveSpoofProfile()
+                                }
+                        }
+                        Picker("Battery State", selection: $spoofBatteryStateSelection) {
+                            Text("Unknown").tag(UIDevice.BatteryState.unknown.rawValue)
+                            Text("Unplugged").tag(UIDevice.BatteryState.unplugged.rawValue)
+                            Text("Charging").tag(UIDevice.BatteryState.charging.rawValue)
+                            Text("Full").tag(UIDevice.BatteryState.full.rawValue)
+                        }
+                        .onChange(of: spoofBatteryStateSelection) { _ in
+                            saveSpoofProfile()
+                        }
+                        Toggle("Low Power Mode", isOn: $spoofLowPowerModeEnabled)
+                            .onChange(of: spoofLowPowerModeEnabled) { _ in
+                                saveSpoofProfile()
+                            }
+
+                        HStack {
+                            Text("Carrier Name")
+                            TextField("T-Mobile", text: $typingSpoofCarrierName)
+                                .multilineTextAlignment(.trailing)
+                                .onSubmit {
+                                    saveSpoofProfile()
+                                }
+                        }
+                        HStack {
+                            Text("MCC")
+                            TextField("310", text: $typingSpoofMobileCountryCode)
+                                .multilineTextAlignment(.trailing)
+                                .onSubmit {
+                                    saveSpoofProfile()
+                                }
+                        }
+                        HStack {
+                            Text("MNC")
+                            TextField("260", text: $typingSpoofMobileNetworkCode)
+                                .multilineTextAlignment(.trailing)
+                                .onSubmit {
+                                    saveSpoofProfile()
+                                }
+                        }
+                        HStack {
+                            Text("ISO Country")
+                            TextField("us", text: $typingSpoofISOCountryCode)
+                                .multilineTextAlignment(.trailing)
+                                .onSubmit {
+                                    saveSpoofProfile()
+                                }
+                        }
+                        Picker("Radio Tech", selection: $typingSpoofRadioAccessTechnology) {
+                            ForEach(availableRadioAccessTechnologies(), id: \.self) { tech in
+                                Text(tech).tag(tech)
+                            }
+                        }
+                        .onChange(of: typingSpoofRadioAccessTechnology) { _ in
+                            saveSpoofProfile()
+                        }
+                        }
+                        .disabled(container.blockDeviceInfoReads)
                     }
                 } header: {
                     Text("Spoof Profile")
                 } footer: {
-                    Text("Overrides UIDevice, NSProcessInfo, Locale, and TimeZone values for this container.")
+                    Text("Overrides UIDevice, NSProcessInfo, Locale, and TimeZone values for this container. If Block Device Info Reads is enabled, unknown/empty values are returned instead.")
                 }
 
                 Section {
@@ -314,6 +405,14 @@ struct LCContainerView : View {
             typingSpoofSystemVersion = container.spoofSystemVersion
             typingSpoofLocaleIdentifier = container.spoofLocaleIdentifier
             typingSpoofTimeZoneIdentifier = container.spoofTimeZoneIdentifier
+            typingSpoofBatteryLevel = String(format: "%.2f", container.spoofBatteryLevel)
+            spoofBatteryStateSelection = container.spoofBatteryState
+            spoofLowPowerModeEnabled = container.spoofLowPowerModeEnabled
+            typingSpoofCarrierName = container.spoofCarrierName
+            typingSpoofMobileCountryCode = container.spoofMobileCountryCode
+            typingSpoofMobileNetworkCode = container.spoofMobileNetworkCode
+            typingSpoofISOCountryCode = container.spoofISOCountryCode
+            typingSpoofRadioAccessTechnology = container.spoofRadioAccessTechnology.isEmpty ? "CTRadioAccessTechnologyLTE" : container.spoofRadioAccessTechnology
             settingsBundle = delegate.getSettingsBundle()
             runningLC = LCSharedUtils.getContainerUsingLCScheme(withFolderName: container.folderName)
             inUse = runningLC != nil
@@ -339,16 +438,61 @@ struct LCContainerView : View {
             return
         }
 
-        let normalizedLocale = typingSpoofLocaleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !normalizedLocale.isEmpty && !Locale.availableIdentifiers.contains(normalizedLocale) {
-            errorInfo = "Locale ID is invalid. Example: en_US."
+        let rawLocale = typingSpoofLocaleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedLocale: String
+        if rawLocale.isEmpty {
+            normalizedLocale = ""
+        } else if let localeIdentifier = normalizedLocaleIdentifier(rawLocale) {
+            normalizedLocale = localeIdentifier
+        } else {
+            errorInfo = "Locale ID is invalid. Example: en_US or en-US."
             errorShow = true
             return
         }
 
-        let normalizedTimeZone = typingSpoofTimeZoneIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !normalizedTimeZone.isEmpty && TimeZone(identifier: normalizedTimeZone) == nil {
+        let rawTimeZone = typingSpoofTimeZoneIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedTimeZone: String
+        if rawTimeZone.isEmpty {
+            normalizedTimeZone = ""
+        } else if let zoneIdentifier = normalizedTimeZoneIdentifier(rawTimeZone) {
+            normalizedTimeZone = zoneIdentifier
+        } else {
             errorInfo = "Time Zone is invalid. Example: Asia/Riyadh."
+            errorShow = true
+            return
+        }
+
+        let normalizedBattery = typingSpoofBatteryLevel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let batteryLevel = Double(normalizedBattery), batteryLevel >= 0.0, batteryLevel <= 1.0 else {
+            errorInfo = "Battery Level must be between 0.0 and 1.0."
+            errorShow = true
+            return
+        }
+
+        let mcc = typingSpoofMobileCountryCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !mcc.isEmpty && !isNumeric(mcc, validLengths: [3]) {
+            errorInfo = "MCC must be 3 digits."
+            errorShow = true
+            return
+        }
+
+        let mnc = typingSpoofMobileNetworkCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !mnc.isEmpty && !isNumeric(mnc, validLengths: [2, 3]) {
+            errorInfo = "MNC must be 2 or 3 digits."
+            errorShow = true
+            return
+        }
+
+        let isoCountryCode = typingSpoofISOCountryCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !isoCountryCode.isEmpty && (isoCountryCode.count != 2 || isoCountryCode.contains(where: { !$0.isLetter })) {
+            errorInfo = "ISO Country must be 2 letters. Example: us."
+            errorShow = true
+            return
+        }
+
+        let radioTech = typingSpoofRadioAccessTechnology.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !availableRadioAccessTechnologies().contains(radioTech) {
+            errorInfo = "Radio Tech value is invalid."
             errorShow = true
             return
         }
@@ -359,6 +503,14 @@ struct LCContainerView : View {
         container.spoofSystemVersion = normalizedSystemVersion
         container.spoofLocaleIdentifier = normalizedLocale
         container.spoofTimeZoneIdentifier = normalizedTimeZone
+        container.spoofBatteryLevel = batteryLevel
+        container.spoofBatteryState = spoofBatteryStateSelection
+        container.spoofLowPowerModeEnabled = spoofLowPowerModeEnabled
+        container.spoofCarrierName = typingSpoofCarrierName.trimmingCharacters(in: .whitespacesAndNewlines)
+        container.spoofMobileCountryCode = mcc
+        container.spoofMobileNetworkCode = mnc
+        container.spoofISOCountryCode = isoCountryCode.lowercased()
+        container.spoofRadioAccessTechnology = radioTech
         saveContainer()
     }
 
@@ -369,6 +521,120 @@ struct LCContainerView : View {
         typingSpoofSystemVersion = UIDevice.current.systemVersion
         typingSpoofLocaleIdentifier = Locale.current.identifier
         typingSpoofTimeZoneIdentifier = TimeZone.current.identifier
+        typingSpoofBatteryLevel = "0.85"
+        spoofBatteryStateSelection = UIDevice.BatteryState.charging.rawValue
+        spoofLowPowerModeEnabled = false
+        typingSpoofCarrierName = ""
+        typingSpoofMobileCountryCode = ""
+        typingSpoofMobileNetworkCode = ""
+        typingSpoofISOCountryCode = ""
+        typingSpoofRadioAccessTechnology = "CTRadioAccessTechnologyLTE"
+    }
+
+    func applyRandomDeviceProfileValues() {
+        let localeTimeZonePairs: [(String, String)] = [
+            ("en_US", "America/New_York"),
+            ("en_GB", "Europe/London"),
+            ("ar_SA", "Asia/Riyadh"),
+            ("fr_FR", "Europe/Paris"),
+            ("de_DE", "Europe/Berlin"),
+            ("ja_JP", "Asia/Tokyo"),
+            ("es_ES", "Europe/Madrid"),
+            ("tr_TR", "Europe/Istanbul"),
+            ("ko_KR", "Asia/Seoul"),
+            ("hi_IN", "Asia/Kolkata")
+        ]
+        let selectedLocaleZone = localeTimeZonePairs.randomElement() ?? ("en_US", "America/New_York")
+
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        let possibleNames = isPad
+            ? ["iPad", "My iPad", "iPad Pro", "iPad Air"]
+            : ["iPhone", "My iPhone", "iPhone Pro", "iPhone Plus"]
+        let selectedName = possibleNames.randomElement() ?? (isPad ? "iPad" : "iPhone")
+
+        let currentSystemName = UIDevice.current.systemName
+        let majorVersion = Int(UIDevice.current.systemVersion.split(separator: ".").first ?? "26") ?? 26
+        let minorVersion = Int.random(in: 0...3)
+        let patchVersion = Int.random(in: 0...2)
+        let batteryLevel = Double.random(in: 0.18...1.0)
+        let batteryStateOptions = [
+            UIDevice.BatteryState.unplugged.rawValue,
+            UIDevice.BatteryState.charging.rawValue,
+            UIDevice.BatteryState.full.rawValue
+        ]
+        let carrierTemplates: [(name: String, mcc: String, mnc: String, iso: String)] = [
+            ("T-Mobile", "310", "260", "us"),
+            ("AT&T", "310", "410", "us"),
+            ("Verizon", "311", "480", "us"),
+            ("Vodafone UK", "234", "15", "gb"),
+            ("O2 UK", "234", "10", "gb"),
+            ("Orange France", "208", "01", "fr"),
+            ("Telekom.de", "262", "01", "de"),
+            ("SK Telecom", "450", "05", "kr"),
+            ("Docomo", "440", "10", "jp"),
+            ("STC", "420", "01", "sa")
+        ]
+        let selectedCarrier = carrierTemplates.randomElement() ?? ("T-Mobile", "310", "260", "us")
+        let radioTechnology = availableRadioAccessTechnologies().randomElement() ?? "CTRadioAccessTechnologyLTE"
+
+        typingSpoofDeviceName = selectedName
+        typingSpoofDeviceModel = isPad ? "iPad" : "iPhone"
+        typingSpoofSystemName = currentSystemName
+        if patchVersion == 0 {
+            typingSpoofSystemVersion = "\(majorVersion).\(minorVersion)"
+        } else {
+            typingSpoofSystemVersion = "\(majorVersion).\(minorVersion).\(patchVersion)"
+        }
+        typingSpoofLocaleIdentifier = selectedLocaleZone.0
+        typingSpoofTimeZoneIdentifier = selectedLocaleZone.1
+        typingSpoofBatteryLevel = String(format: "%.2f", batteryLevel)
+        spoofBatteryStateSelection = batteryStateOptions.randomElement() ?? UIDevice.BatteryState.unplugged.rawValue
+        spoofLowPowerModeEnabled = batteryLevel < 0.25
+        typingSpoofCarrierName = selectedCarrier.name
+        typingSpoofMobileCountryCode = selectedCarrier.mcc
+        typingSpoofMobileNetworkCode = selectedCarrier.mnc
+        typingSpoofISOCountryCode = selectedCarrier.iso
+        typingSpoofRadioAccessTechnology = radioTechnology
+    }
+
+    func normalizedLocaleIdentifier(_ raw: String) -> String? {
+        let bcp47Normalized = raw.replacingOccurrences(of: "-", with: "_")
+        let canonical = Locale.canonicalIdentifier(from: bcp47Normalized)
+        let components = NSLocale.components(fromLocaleIdentifier: canonical)
+        let languageCode = components[NSLocale.Key.languageCode.rawValue]
+        if let languageCode, !languageCode.isEmpty {
+            return canonical
+        }
+        return nil
+    }
+
+    func normalizedTimeZoneIdentifier(_ raw: String) -> String? {
+        if let zone = TimeZone(identifier: raw) {
+            return zone.identifier
+        }
+        if let zone = TimeZone(abbreviation: raw.uppercased()) {
+            return zone.identifier
+        }
+        return nil
+    }
+
+    func availableRadioAccessTechnologies() -> [String] {
+        [
+            "CTRadioAccessTechnologyNR",
+            "CTRadioAccessTechnologyNRNSA",
+            "CTRadioAccessTechnologyLTE",
+            "CTRadioAccessTechnologyWCDMA",
+            "CTRadioAccessTechnologyHSDPA",
+            "CTRadioAccessTechnologyHSUPA",
+            "CTRadioAccessTechnologyCDMAEVDORevA"
+        ]
+    }
+
+    func isNumeric(_ value: String, validLengths: Set<Int>) -> Bool {
+        if !validLengths.contains(value.count) {
+            return false
+        }
+        return value.allSatisfy { $0.isNumber }
     }
 
     func isValidSystemVersion(_ value: String) -> Bool {
