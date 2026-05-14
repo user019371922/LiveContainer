@@ -155,6 +155,12 @@ static void LCStrictAutoWipeContainerForDataUUIDIfNeeded(NSString *dataUUID) {
         @"lcHomePath": NSHomeDirectory(),
     }.mutableCopy;
     
+    NSString* launchAppUrlScheme = [NSUserDefaults.standardUserDefaults stringForKey:@"launchAppUrlScheme"];
+    [NSUserDefaults.lcUserDefaults removeObjectForKey:@"launchAppUrlScheme"];
+    if(launchAppUrlScheme) {
+        [userInfo setValue:launchAppUrlScheme forKey:@"launchAppUrlScheme"];
+    }
+    
     NSURL *docURL = [NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].lastObject;
     if ([NSUserDefaults.standardUserDefaults boolForKey:@"LCSharePrivateDataWithLiveProcess"]) {
         NSData* bookmarkData = [docURL bookmarkDataWithOptions:(1<<11) includingResourceValuesForKeys:0 relativeToURL:0 error:0];
