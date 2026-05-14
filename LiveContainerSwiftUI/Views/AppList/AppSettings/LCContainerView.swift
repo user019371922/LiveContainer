@@ -45,6 +45,7 @@ struct LCContainerView : View {
     @State private var spoofSubscriberSIMInsertedEnabled: Bool = false
     @State private var spoofSubscriberSIMInserted: Bool = false
     @State private var typingSpoofRadioAccessTechnology: String = "CTRadioAccessTechnologyLTE"
+    @State private var typingSpoofHardwareModel: String = ""
     @State private var inUse = false
     @State private var runningLC : String? = nil
     
@@ -75,6 +76,7 @@ struct LCContainerView : View {
         self._spoofSubscriberSIMInsertedEnabled = State(initialValue: container.spoofSubscriberSIMInsertedEnabled)
         self._spoofSubscriberSIMInserted = State(initialValue: container.spoofSubscriberSIMInserted)
         self._typingSpoofRadioAccessTechnology = State(initialValue: container.spoofRadioAccessTechnology.isEmpty ? "CTRadioAccessTechnologyLTE" : container.spoofRadioAccessTechnology)
+        self._typingSpoofHardwareModel = State(initialValue: container.spoofHardwareModel)
         self._uiDefaultDataFolder = Binding(projectedValue: uiDefaultDataFolder)
     }
     
@@ -205,6 +207,50 @@ struct LCContainerView : View {
                                 }
                         }
                         HStack {
+                            Text("Hardware Model")
+                            Spacer()
+                            Picker("", selection: $typingSpoofHardwareModel) {
+                                Text("None").tag("")
+                                Section("iPhone 17") {
+                                    Text("iPhone 17 Pro").tag("iPhone18,1")
+                                    Text("iPhone 17 Pro Max").tag("iPhone18,2")
+                                    Text("iPhone 17").tag("iPhone18,3")
+                                    Text("iPhone 17 Air").tag("iPhone18,4")
+                                }
+                                Section("iPhone 16") {
+                                    Text("iPhone 16 Pro").tag("iPhone17,1")
+                                    Text("iPhone 16 Pro Max").tag("iPhone17,2")
+                                    Text("iPhone 16").tag("iPhone17,3")
+                                    Text("iPhone 16 Plus").tag("iPhone17,4")
+                                    Text("iPhone 16e").tag("iPhone17,5")
+                                }
+                                Section("iPhone 15") {
+                                    Text("iPhone 15 Pro").tag("iPhone16,1")
+                                    Text("iPhone 15 Pro Max").tag("iPhone16,2")
+                                    Text("iPhone 15").tag("iPhone15,4")
+                                    Text("iPhone 15 Plus").tag("iPhone15,5")
+                                }
+                                Section("iPhone 14") {
+                                    Text("iPhone 14 Pro").tag("iPhone15,2")
+                                    Text("iPhone 14 Pro Max").tag("iPhone15,3")
+                                    Text("iPhone 14").tag("iPhone14,7")
+                                    Text("iPhone 14 Plus").tag("iPhone14,8")
+                                }
+                                Section("iPad Pro") {
+                                    Text("iPad Pro M4 11\"").tag("iPad16,3")
+                                    Text("iPad Pro M4 13\"").tag("iPad16,5")
+                                }
+                                Section("iPad Air") {
+                                    Text("iPad Air M2 11\"").tag("iPad14,8")
+                                    Text("iPad Air M2 13\"").tag("iPad14,10")
+                                }
+                            }
+                            .labelsHidden()
+                            .onChange(of: typingSpoofHardwareModel) { _ in
+                                saveSpoofProfile()
+                            }
+                        }
+                        HStack {
                             Text("System Name")
                             TextField("iOS", text: $typingSpoofSystemName)
                                 .multilineTextAlignment(.trailing)
@@ -308,7 +354,7 @@ struct LCContainerView : View {
                     Text("Spoof Profile")
                 } footer: {
                     if tweakLoaderDependentControlsEnabled {
-                        Text("Overrides UIDevice (including identifierForVendor), NSProcessInfo, Locale/TimeZone, and modern CoreTelephony subscriber surfaces (CTSubscriber/CTSubscriberInfo + serviceCurrentRadioAccessTechnology). If Block Device Info Reads is enabled, unknown/empty values are returned instead.")
+                        Text("Overrides UIDevice (including identifierForVendor), NSProcessInfo, Locale/TimeZone, sysctlbyname(hw.machine), uname(), and modern CoreTelephony subscriber surfaces (CTSubscriber/CTSubscriberInfo + serviceCurrentRadioAccessTechnology). If Block Device Info Reads is enabled, unknown/empty values are returned instead.")
                     } else {
                         Text("Spoof controls require TweakLoader injection. Disable Don't Inject TweakLoader in App Settings to use this.")
                     }
@@ -445,6 +491,7 @@ struct LCContainerView : View {
             spoofSubscriberSIMInsertedEnabled = container.spoofSubscriberSIMInsertedEnabled
             spoofSubscriberSIMInserted = container.spoofSubscriberSIMInserted
             typingSpoofRadioAccessTechnology = container.spoofRadioAccessTechnology.isEmpty ? "CTRadioAccessTechnologyLTE" : container.spoofRadioAccessTechnology
+            typingSpoofHardwareModel = container.spoofHardwareModel
             settingsBundle = delegate.getSettingsBundle()
             runningLC = LCSharedUtils.getContainerUsingLCScheme(withFolderName: container.folderName)
             inUse = runningLC != nil
@@ -539,6 +586,7 @@ struct LCContainerView : View {
         container.spoofSubscriberSIMInsertedEnabled = spoofSubscriberSIMInsertedEnabled
         container.spoofSubscriberSIMInserted = spoofSubscriberSIMInserted
         container.spoofRadioAccessTechnology = radioTech
+        container.spoofHardwareModel = typingSpoofHardwareModel
         saveContainer()
     }
 
@@ -559,6 +607,7 @@ struct LCContainerView : View {
         spoofSubscriberSIMInsertedEnabled = false
         spoofSubscriberSIMInserted = false
         typingSpoofRadioAccessTechnology = "CTRadioAccessTechnologyLTE"
+        typingSpoofHardwareModel = currentHardwareModel()
     }
 
     func applyRandomDeviceProfileValues() {
@@ -616,6 +665,19 @@ struct LCContainerView : View {
         spoofSubscriberSIMInsertedEnabled = true
         spoofSubscriberSIMInserted = Bool.random()
         typingSpoofRadioAccessTechnology = radioTechnology
+
+        // Pick a random hardware model consistent with the device type
+        let hardwareModels: [String]
+        if isPad {
+            hardwareModels = ["iPad16,3", "iPad16,5", "iPad14,8", "iPad14,10"]
+        } else {
+            hardwareModels = [
+                "iPhone18,1", "iPhone18,2", "iPhone18,3", "iPhone18,4",
+                "iPhone17,1", "iPhone17,2", "iPhone17,3", "iPhone17,4",
+                "iPhone16,1", "iPhone16,2", "iPhone15,4", "iPhone15,5"
+            ]
+        }
+        typingSpoofHardwareModel = hardwareModels.randomElement() ?? "iPhone17,3"
     }
 
     func normalizedLocaleIdentifier(_ raw: String) -> String? {
@@ -649,6 +711,14 @@ struct LCContainerView : View {
             "CTRadioAccessTechnologyHSUPA",
             "CTRadioAccessTechnologyCDMAEVDORevA"
         ]
+    }
+
+    func currentHardwareModel() -> String {
+        var size = 0
+        sysctlbyname("hw.machine", nil, &size, nil, 0)
+        var machine = [CChar](repeating: 0, count: size)
+        sysctlbyname("hw.machine", &machine, &size, nil, 0)
+        return String(cString: machine)
     }
 
     func isValidSystemVersion(_ value: String) -> Bool {

@@ -45,6 +45,7 @@ class LCContainer : ObservableObject, Hashable {
     @Published var spoofSubscriberSIMInsertedEnabled: Bool
     @Published var spoofSubscriberSIMInserted: Bool
     @Published var spoofRadioAccessTechnology: String
+    @Published var spoofHardwareModel: String
     private var infoDict : [String:Any]?
     public var containerURL : URL {
         if let resolvedContainerURL {
@@ -108,6 +109,7 @@ class LCContainer : ObservableObject, Hashable {
         spoofSubscriberSIMInsertedEnabled: Bool = false,
         spoofSubscriberSIMInserted: Bool = false,
         spoofRadioAccessTechnology: String = "",
+        spoofHardwareModel: String = "",
         bookmarkData: Data? = nil,
         resolvedContainerURL: URL? = nil
     ) {
@@ -134,6 +136,7 @@ class LCContainer : ObservableObject, Hashable {
         self.spoofSubscriberSIMInsertedEnabled = spoofSubscriberSIMInsertedEnabled
         self.spoofSubscriberSIMInserted = spoofSubscriberSIMInserted
         self.spoofRadioAccessTechnology = spoofRadioAccessTechnology
+        self.spoofHardwareModel = spoofHardwareModel
         self.storageBookMark = bookmarkData
         self.resolvedContainerURL = resolvedContainerURL
     }
@@ -164,6 +167,7 @@ class LCContainer : ObservableObject, Hashable {
                   spoofSubscriberSIMInsertedEnabled: false,
                   spoofSubscriberSIMInserted: false,
                   spoofRadioAccessTechnology: "",
+                  spoofHardwareModel: "",
                   bookmarkData: bookmarkData,
                   resolvedContainerURL: nil
         )
@@ -212,6 +216,7 @@ class LCContainer : ObservableObject, Hashable {
                 spoofSubscriberSIMInsertedEnabled = plistInfo["spoofSubscriberSIMInsertedEnabled"] as? Bool ?? false
                 spoofSubscriberSIMInserted = plistInfo["spoofSubscriberSIMInserted"] as? Bool ?? false
                 spoofRadioAccessTechnology = plistInfo["spoofRadioAccessTechnology"] as? String ?? ""
+                spoofHardwareModel = plistInfo["spoofHardwareModel"] as? String ?? ""
             }
         } catch {
             
@@ -276,6 +281,9 @@ class LCContainer : ObservableObject, Hashable {
         if !spoofRadioAccessTechnology.isEmpty {
             infoDict!["spoofRadioAccessTechnology"] = spoofRadioAccessTechnology
         }
+        if !spoofHardwareModel.isEmpty {
+            infoDict!["spoofHardwareModel"] = spoofHardwareModel
+        }
         
         do {
             let fm = FileManager.default
@@ -321,6 +329,7 @@ class LCContainer : ObservableObject, Hashable {
         spoofSubscriberSIMInsertedEnabled = infoDict["spoofSubscriberSIMInsertedEnabled"] as? Bool ?? false
         spoofSubscriberSIMInserted = infoDict["spoofSubscriberSIMInserted"] as? Bool ?? false
         spoofRadioAccessTechnology = infoDict["spoofRadioAccessTechnology"] as? String ?? ""
+        spoofHardwareModel = infoDict["spoofHardwareModel"] as? String ?? ""
     }
     
     static func == (lhs: LCContainer, rhs: LCContainer) -> Bool {

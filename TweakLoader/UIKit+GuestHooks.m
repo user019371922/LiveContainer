@@ -4,6 +4,8 @@
 #import "utils.h"
 #import <LocalAuthentication/LocalAuthentication.h>
 #import "Localization.h"
+#include <sys/sysctl.h>
+#include <sys/utsname.h>
 
 UIInterfaceOrientation LCOrientationLock = UIInterfaceOrientationUnknown;
 NSMutableArray<NSString*>* LCSupportedUrlSchemes = nil;
@@ -29,6 +31,7 @@ NSString *spoofSubscriberIdentifier = nil;
 NSData *spoofSubscriberCarrierToken = nil;
 BOOL spoofSubscriberSIMInsertedEnabled = NO;
 BOOL spoofSubscriberSIMInserted = NO;
+NSString *spoofHardwareModel = nil;
 BOOL launchURLProcessed = NO;
 
 @interface LCTelephonyNetworkInfoHookProvider : NSObject
@@ -209,6 +212,214 @@ static UIWindowLevel LCOverlayWindowLevel(void) {
     UIWindow *keyWindow = LCKeyWindowForScene(LCForegroundWindowScene());
     return (keyWindow ? keyWindow.windowLevel : UIWindowLevelNormal) + 1;
 }
+
+// MARK: - C-level hardware model spoofing (sysctlbyname / uname)
+// Intercept low-level C APIs that analytics SDKs use to read the real hardware
+// identifier (e.g. "iPhoneXX,X"). UIDevice.model only returns "iPhone" so apps
+// bypass it entirely via these C calls.
+
+static int hook_sysctlbyname(const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
+    int ret = sysctlbyname(name, oldp, oldlenp, newp, newlen);
+    if(ret == 0 && oldp && oldlenp && spoofHardwareModel) {
+        if(strcmp(name, "hw.machine") == 0 || strcmp(name, "hw.model") == 0) {
+            const char *spoofed = spoofHardwareModel.UTF8String;
+            size_t spoofedLen = strlen(spoofed) + 1;
+            if(*oldlenp >= spoofedLen) {
+                strlcpy((char *)oldp, spoofed, *oldlenp);
+                *oldlenp = spoofedLen;
+            }
+        }
+    }
+    return ret;
+}
+
+static int hook_uname(struct utsname *uts) {
+    int ret = uname(uts);
+    if(ret == 0 && spoofHardwareModel) {
+        strlcpy(uts->machine, spoofHardwareModel.UTF8String, sizeof(uts->machine));
+    }
+    return ret;
+}
+
+// DYLD_INTERPOSE lets us hook C functions from a loaded dylib without needing litehook or fishhook.
+// The linker replaces calls to the original function with our hook at load time.
+#define DYLD_INTERPOSE(_hook, _orig) \
+    __attribute__((used)) static struct { const void *hook; const void *orig; } \
+    _interpose_##_orig __attribute__((section("__DATA,__interpose"))) = \
+    { (const void *)&_hook, (const void *)&_orig }
+
+// These interpose entries are conditionally effective — the hook functions
+// check spoofHardwareModel at runtime and pass through if NULL.
+DYLD_INTERPOSE(hook_sysctlbyname, sysctlbyname);
+DYLD_INTERPOSE(hook_uname, uname);
+
+// MARK: - HTTP Header Device Identity Rewriting
+// Intercepts ALL outgoing HTTP headers to rewrite User-Agent strings containing
+// real device info. This covers native iOS (NSURLSession), Flutter (Dart HTTP),
+// React Native (fetch/axios), Expo, and all analytics SDKs (Firebase, PostHog,
+// Adjust, AppsFlyer, etc.) since they ALL go through NSMutableURLRequest.
+
+// Helper: Rewrite a User-Agent string, replacing real hw.machine and iOS version
+// with spoofed values. Handles all known User-Agent formats:
+//
+// Format 1 (Custom app UAs):
+//   ExampleApp/10.0 iOS/18.2 (Apple;iPhoneXX,X;;;;;1;2024)
+//
+// Format 2 (WebKit/Safari/WKWebView):
+//   Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15
+//
+// Format 3 (NSURLSession default / CFNetwork):
+//   AppName/1.0 CFNetwork/1568.200.51 Darwin/24.1.0
+//
+// Format 4 (Dart/Flutter):
+//   Dart/3.5 (dart:io) MyApp/1.0 (iOS 18.0; iPhoneXX,X)
+//
+// Also catches any raw occurrence of the hw.machine identifier
+// embedded anywhere in the string.
+
+static NSRegularExpression *_uaHwMachineRegex = nil;
+static NSRegularExpression *_uaIOSVersionSlashRegex = nil;
+static NSRegularExpression *_uaIOSVersionCPURegex = nil;
+static NSRegularExpression *_uaIOSVersionParenRegex = nil;
+
+static void LCInitUserAgentRegexes(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // Match hw.machine identifiers: iPhoneXX,X  iPadXX,X  etc.
+        // This is the most important one — catches ALL formats
+        _uaHwMachineRegex = [NSRegularExpression
+            regularExpressionWithPattern:@"(iPhone|iPad|iPod)\\d+,\\d+"
+            options:0 error:nil];
+        
+        // Match "iOS/XX.X" or "iOS/XX.X.X" (common custom UA format)
+        _uaIOSVersionSlashRegex = [NSRegularExpression
+            regularExpressionWithPattern:@"iOS/[\\d.]+"
+            options:0 error:nil];
+        
+        // Match "CPU iPhone OS 18_0 like Mac OS X" (WebKit/Safari UA)
+        _uaIOSVersionCPURegex = [NSRegularExpression
+            regularExpressionWithPattern:@"CPU iPhone OS [\\d_]+ like Mac OS X"
+            options:0 error:nil];
+        
+        // Match "(iOS 18.0;" or "iOS 18.0)" (Dart/Flutter, generic)
+        _uaIOSVersionParenRegex = [NSRegularExpression
+            regularExpressionWithPattern:@"iOS [\\d.]+"
+            options:0 error:nil];
+    });
+}
+
+static NSString* LCRewriteUserAgent(NSString *ua) {
+    if(!ua || ua.length == 0) return ua;
+    
+    NSMutableString *result = [ua mutableCopy];
+    NSRange fullRange = NSMakeRange(0, result.length);
+    
+    // 1. Replace all hw.machine identifiers (iPhoneXX,X → spoofed)
+    // This is the primary catch-all — works for ANY format
+    if(spoofHardwareModel) {
+        [_uaHwMachineRegex replaceMatchesInString:result
+            options:0 range:fullRange
+            withTemplate:spoofHardwareModel];
+        fullRange = NSMakeRange(0, result.length);
+    }
+    
+    // 2. Replace iOS version in various formats
+    if(spoofSystemVersion) {
+        // "iOS/XX.X" → "iOS/{spoofed}" (custom app UAs, analytics SDKs, etc.)
+        [_uaIOSVersionSlashRegex replaceMatchesInString:result
+            options:0 range:fullRange
+            withTemplate:[NSString stringWithFormat:@"iOS/%@", spoofSystemVersion]];
+        fullRange = NSMakeRange(0, result.length);
+        
+        // "CPU iPhone OS 18_0 like Mac OS X" → spoofed (WebKit)
+        NSString *underscoreVersion = [spoofSystemVersion stringByReplacingOccurrencesOfString:@"." withString:@"_"];
+        NSString *cpuReplacement = [NSString stringWithFormat:@"CPU iPhone OS %@ like Mac OS X", underscoreVersion];
+        [_uaIOSVersionCPURegex replaceMatchesInString:result
+            options:0 range:fullRange
+            withTemplate:cpuReplacement];
+        fullRange = NSMakeRange(0, result.length);
+        
+        // "iOS 18.0" → "iOS {spoofed}" (Dart/Flutter, generic)
+        [_uaIOSVersionParenRegex replaceMatchesInString:result
+            options:0 range:fullRange
+            withTemplate:[NSString stringWithFormat:@"iOS %@", spoofSystemVersion]];
+    }
+    
+    return result;
+}
+
+// Helper: check if a header name is User-Agent (case-insensitive per HTTP spec)
+static BOOL LCIsUserAgentHeader(NSString *field) {
+    return [field caseInsensitiveCompare:@"User-Agent"] == NSOrderedSame;
+}
+
+// Helper: rewrite a User-Agent value in a dictionary (for HTTPAdditionalHeaders)
+static NSDictionary* LCRewriteHeaderDict(NSDictionary *headers) {
+    if(!headers) return headers;
+    NSMutableDictionary *result = nil;
+    for(NSString *key in headers) {
+        if(LCIsUserAgentHeader(key)) {
+            NSString *val = headers[key];
+            if([val isKindOfClass:NSString.class]) {
+                NSString *rewritten = LCRewriteUserAgent(val);
+                if(![rewritten isEqualToString:val]) {
+                    if(!result) result = [headers mutableCopy];
+                    result[key] = rewritten;
+                }
+            }
+        }
+    }
+    return result ?: headers;
+}
+
+// --- NSMutableURLRequest hooks ---
+// These intercept User-Agent being set on ANY outgoing HTTP request.
+// Covers: NSURLSession (native iOS, React Native, Expo),
+//         CFNetwork (Flutter dart:io), Firebase, PostHog, Adjust, AppsFlyer, etc.
+
+@interface NSMutableURLRequest(LCDeviceSpoof)
+@end
+
+@implementation NSMutableURLRequest(LCDeviceSpoof)
+
+- (void)hook_setValue:(NSString *)value forHTTPHeaderField:(NSString *)field {
+    if(value && LCIsUserAgentHeader(field)) {
+        value = LCRewriteUserAgent(value);
+    }
+    [self hook_setValue:value forHTTPHeaderField:field];
+}
+
+- (void)hook_addValue:(NSString *)value forHTTPHeaderField:(NSString *)field {
+    if(value && LCIsUserAgentHeader(field)) {
+        value = LCRewriteUserAgent(value);
+    }
+    [self hook_addValue:value forHTTPHeaderField:field];
+}
+
+- (void)hook_setAllHTTPHeaderFields:(NSDictionary *)headerFields {
+    [self hook_setAllHTTPHeaderFields:LCRewriteHeaderDict(headerFields)];
+}
+
+@end
+
+// --- NSURLSessionConfiguration hooks ---
+// Catches apps that set User-Agent at the session level via HTTPAdditionalHeaders.
+// This is the recommended Apple API for setting global headers, used by:
+// - React Native (RCTSetCustomNSURLSessionConfigurationProvider)
+// - Firebase SDK
+// - Alamofire (Swift networking library)
+// - Any app following Apple best practices
+
+@interface NSURLSessionConfiguration(LCDeviceSpoof)
+@end
+
+@implementation NSURLSessionConfiguration(LCDeviceSpoof)
+
+- (void)hook_setHTTPAdditionalHeaders:(NSDictionary *)headers {
+    [self hook_setHTTPAdditionalHeaders:LCRewriteHeaderDict(headers)];
+}
+
+@end
 
 __attribute__((constructor))
 static void UIKitGuestHooksInit(void) {
@@ -400,6 +611,36 @@ static void UIKitGuestHooksInit(void) {
 
         Class subscriberInfoClass = NSClassFromString(@"CTSubscriberInfo");
         LCSwizzleClassIfPresentWithSourceClass(subscriberInfoClass, LCSubscriberInfoHookProvider.class, @selector(subscribers), @selector(hook_subscribers));
+    }
+
+    // Hardware model spoofing (hw.machine via sysctlbyname / uname)
+    // The DYLD_INTERPOSE hooks above are always active but check this variable at runtime.
+    NSString *hardwareModel = guestContainerInfo[@"spoofHardwareModel"];
+    if([hardwareModel isKindOfClass:NSString.class] && hardwareModel.length > 0) {
+        spoofHardwareModel = hardwareModel;
+    } else if(blockDeviceInfoReads) {
+        // When blocking all device info, return a generic model
+        spoofHardwareModel = @"iPhone";
+    }
+
+    // HTTP header device identity rewriting
+    // Hook NSMutableURLRequest to rewrite User-Agent in ALL outgoing HTTP requests.
+    // This catches native iOS, Flutter, React Native, Expo, Firebase, PostHog,
+    // Adjust, AppsFlyer, and any analytics SDK — they all go through NSMutableURLRequest.
+    if(spoofHardwareModel || spoofSystemVersion) {
+        LCInitUserAgentRegexes();
+        swizzle(NSMutableURLRequest.class,
+            @selector(setValue:forHTTPHeaderField:),
+            @selector(hook_setValue:forHTTPHeaderField:));
+        swizzle(NSMutableURLRequest.class,
+            @selector(addValue:forHTTPHeaderField:),
+            @selector(hook_addValue:forHTTPHeaderField:));
+        swizzle(NSMutableURLRequest.class,
+            @selector(setAllHTTPHeaderFields:),
+            @selector(hook_setAllHTTPHeaderFields:));
+        swizzle(NSURLSessionConfiguration.class,
+            @selector(setHTTPAdditionalHeaders:),
+            @selector(hook_setHTTPAdditionalHeaders:));
     }
 }
 
