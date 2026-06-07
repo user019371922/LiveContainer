@@ -295,7 +295,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                             }
                         }
                     } label: {
-                        Label("lc.appList.sort".loc, systemImage: "line.3.horizontal.decrease.circle")
+                        Label("Sort by", systemImage: "line.3.horizontal.decrease.circle")
                     }
                 }
             }
