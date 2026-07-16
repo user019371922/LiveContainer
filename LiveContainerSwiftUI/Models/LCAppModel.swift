@@ -530,7 +530,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             if !found {
                 found = MultitaskDockManager.shared.bringMultitaskViewToFront(uuid: dataUUID)
             }
-            if let urlScheme, !found  {
+            if let _ = urlScheme, !found  {
                 UserDefaults.standard.removeObject(forKey: "launchAppUrlScheme")
             }
             return found
