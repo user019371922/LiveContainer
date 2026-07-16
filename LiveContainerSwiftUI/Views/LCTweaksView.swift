@@ -10,7 +10,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
-private let lcDisabledTweaksKey = "disabledItems"
+
+
+struct LCTweakCopyMode {
+    let onClose: () -> Void
+    let onCopyHere: (URL) -> Void
+}
 
 final class LCTweakMoveContext: ObservableObject {
     @Published var draggingItemURL: URL?
@@ -69,7 +74,6 @@ struct LCTweakFolderView : View {
     @State private var isTweakSigning = false
     @State private var isInstallingFromURL = false
     @State private var helpPresent = false
-    @State private var disabledTweaks: Set<String>
     
     @EnvironmentObject private var moveContext: LCTweakMoveContext
     
@@ -81,6 +85,7 @@ struct LCTweakFolderView : View {
         _baseUrl = State(initialValue: baseUrl)
         _tweakFolders = tweakFolders
         self.isRoot = isRoot
+        self.copyMode = copyMode
         var tmpTweakItems : [LCTweakItem] = []
         let fm = FileManager()
         do {
@@ -160,55 +165,6 @@ struct LCTweakFolderView : View {
                             Label("lc.common.delete".loc, systemImage: "trash")
                         }
                     }
-                } else {
-                    ForEach(tweakItems, id:\.self) { tweakItem in
-                        rowView(for: tweakItem)
-                            .contentShape(Rectangle())
-                            .highPriorityGesture(TapGesture(count: 2).onEnded {
-                                toggleTweakDisabled(tweakItem)
-                            })
-                            .onDrag {
-                                moveContext.beginDrag(tweakItem.fileUrl)
-                                return NSItemProvider(object: tweakItem.fileUrl.path as NSString)
-                            }
-                            .onDrop(of: [.text], isTargeted: nil) { _ in
-                                dropDraggedItem(into: tweakItem)
-                            }
-                        .contextMenu {
-                            Button {
-                                Task { await renameTweakItem(tweakItem: tweakItem)}
-                            } label: {
-                                Label("lc.common.rename".loc, systemImage: "pencil")
-                            }
-
-                            if tweakItem.supportsDisableToggle {
-                                Button {
-                                    toggleTweakDisabled(tweakItem)
-                                } label: {
-                                    if isTweakDisabled(tweakItem) {
-                                        Label("lc.tweakView.enable".loc, systemImage: "checkmark.circle")
-                                    } else {
-                                        Label("lc.tweakView.disable".loc, systemImage: "nosign")
-                                    }
-                                }
-                            }
-
-                            Button {
-                                moveContext.beginMove(tweakItem.fileUrl)
-                            } label: {
-                                Label("lc.common.move".loc, systemImage: "folder")
-                            }
-                            
-                            Button(role: .destructive) {
-                                deleteTweakItem(tweakItem: tweakItem)
-                            } label: {
-                                Label("lc.common.delete".loc, systemImage: "trash")
-                            }
-                        }
-
-                    }.onDelete { indexSet in
-                        deleteTweakItem(indexSet: indexSet)
-                    }
                 }
             } footer: {
                 if isRoot {
@@ -224,7 +180,6 @@ struct LCTweakFolderView : View {
         }
         .onAppear {
             reloadTweakItems()
-            disabledTweaks = Self.loadDisabledTweaks(baseUrl)
             syncRootTweakFoldersIfNeeded()
         }
         .navigationTitle(isRoot ? "lc.tabView.tweaks".loc : baseUrl.lastPathComponent)
@@ -301,7 +256,7 @@ struct LCTweakFolderView : View {
             }
         }
         .sheet(isPresented: $helpPresent) {
-            LCTweakHelpView(isPresent: $helpPresent)
+            LCHelpView(isPresent: $helpPresent)
         }
         .alert("lc.common.error".loc, isPresented: $errorShow) {
             Button("lc.common.ok".loc, action: {
@@ -353,57 +308,7 @@ struct LCTweakFolderView : View {
         .downloadAlert(helper: downloadHelper)
     }
 
-    @ViewBuilder
-    private func rowView(for tweakItem: LCTweakItem) -> some View {
-        if tweakItem.isFolder || tweakItem.isFramework {
-            NavigationLink {
-                LCTweakFolderView(baseUrl: tweakItem.fileUrl, isRoot: false, tweakFolders: $tweakFolders, copyMode: copyMode)
-                    .environmentObject(moveContext)
-            } label: {
-                tweakItemLabel(tweakItem)
-            }
-        } else {
-            tweakItemLabel(tweakItem)
-        }
-    }
 
-    private func tweakItemLabel(_ tweakItem: LCTweakItem) -> some View {
-        Label {
-            Text(tweakItem.fileUrl.lastPathComponent)
-                .lineLimit(1)
-        } icon: {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: iconName(for: tweakItem))
-                    .frame(width: 20, height: 20)
-                if tweakItem.supportsDisableToggle {
-                    Circle()
-                        .fill(isTweakDisabled(tweakItem) ? Color.red : Color.green)
-                        .frame(width: 8, height: 8)
-                        .overlay(
-                            Circle().stroke(Color(.systemBackground), lineWidth: 1)
-                        )
-                        .offset(x: 4, y: -4)
-                }
-            }
-        }
-    }
-
-    private func iconName(for tweakItem: LCTweakItem) -> String {
-        if tweakItem.isFramework {
-            return "shippingbox.fill"
-        }
-        if tweakItem.isFolder {
-            return "folder.fill"
-        }
-        if tweakItem.isTweak {
-            return "building.columns.fill"
-        }
-        return "document.fill"
-    }
-
-    private func isTweakDisabled(_ tweakItem: LCTweakItem) -> Bool {
-        disabledTweaks.contains(tweakItem.fileUrl.lastPathComponent)
-    }
 
     private func dropDraggedItem(into tweakItem: LCTweakItem) -> Bool {
         guard tweakItem.isFolder || tweakItem.isFramework else {
@@ -445,12 +350,8 @@ struct LCTweakFolderView : View {
             for i in indexSet {
                 let tweakItem = tweakItems[i]
                 try fm.removeItem(at: tweakItem.fileUrl)
-                if tweakItem.supportsDisableToggle {
-                    disabledTweaks.remove(tweakItem.fileUrl.lastPathComponent)
-                }
                 indexToRemove.append(i)
             }
-            try persistDisabledTweaks()
         } catch {
             errorShow = true
             errorInfo = error.localizedDescription
@@ -471,15 +372,10 @@ struct LCTweakFolderView : View {
         var indexToRemove : Int?
         let fm = FileManager()
         do {
-
             try fm.removeItem(at: tweakItem.fileUrl)
             indexToRemove = tweakItems.firstIndex(where: { s in
                 return s == tweakItem
             })
-            if tweakItem.supportsDisableToggle {
-                disabledTweaks.remove(tweakItem.fileUrl.lastPathComponent)
-                try persistDisabledTweaks()
-            }
         } catch {
             errorShow = true
             errorInfo = error.localizedDescription
@@ -518,17 +414,6 @@ struct LCTweakFolderView : View {
             errorShow = true
             errorInfo = error.localizedDescription
             return
-        }
-        if tweakItem.supportsDisableToggle, disabledTweaks.contains(tweakItem.fileUrl.lastPathComponent) {
-            disabledTweaks.remove(tweakItem.fileUrl.lastPathComponent)
-            disabledTweaks.insert(newUrl.lastPathComponent)
-            do {
-                try persistDisabledTweaks()
-            } catch {
-                errorShow = true
-                errorInfo = error.localizedDescription
-                return
-            }
         }
         tweakItems.remove(at: indexToRename)
         let newTweakItem = LCTweakItem(fileUrl: newUrl, isFolder: tweakItem.isFolder, isFramework: tweakItem.isFramework, isTweak: tweakItem.isTweak, isEnabled: tweakItem.isEnabled)
@@ -636,38 +521,7 @@ struct LCTweakFolderView : View {
         }
     }
 
-    private func toggleTweakDisabled(_ tweakItem: LCTweakItem) {
-        guard tweakItem.supportsDisableToggle else {
-            return
-        }
-        let name = tweakItem.fileUrl.lastPathComponent
-        let wasDisabled = disabledTweaks.contains(name)
-        if disabledTweaks.contains(name) {
-            disabledTweaks.remove(name)
-        } else {
-            disabledTweaks.insert(name)
-        }
-        do {
-            try persistDisabledTweaks()
-            triggerToggleHaptic(enabled: wasDisabled)
-        } catch {
-            errorShow = true
-            errorInfo = error.localizedDescription
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-        }
-    }
 
-    private func triggerToggleHaptic(enabled: Bool) {
-        if enabled {
-            let generator = UINotificationFeedbackGenerator()
-            generator.prepare()
-            generator.notificationOccurred(.success)
-        } else {
-            let generator = UIImpactFeedbackGenerator(style: .rigid)
-            generator.prepare()
-            generator.impactOccurred(intensity: 1.0)
-        }
-    }
 
     private func movePendingItemHere() {
         guard let pendingURL = moveContext.pendingMoveItemURL else {
@@ -701,10 +555,6 @@ struct LCTweakFolderView : View {
         }
         do {
             try fm.moveItem(at: sourceURL, to: destinationURL)
-            try Self.removeDisabledFlag(name: sourceURL.lastPathComponent, in: sourceFolderURL)
-            if sourceFolderURL == baseUrl {
-                disabledTweaks.remove(sourceURL.lastPathComponent)
-            }
             reloadTweakItems()
             syncRootTweakFoldersIfNeeded()
         } catch {
@@ -729,9 +579,11 @@ struct LCTweakFolderView : View {
                 let fileUrl = folderURL.appendingPathComponent(fileName)
                 var isDirectory: ObjCBool = false
                 fm.fileExists(atPath: fileUrl.path, isDirectory: &isDirectory)
-                let isFramework = isDirectory.boolValue && fileUrl.lastPathComponent.hasSuffix(".framework")
-                let isTweak = !isDirectory.boolValue && fileUrl.lastPathComponent.hasSuffix(".dylib")
-                items.append(LCTweakItem(fileUrl: fileUrl, isFolder: isDirectory.boolValue, isFramework: isFramework, isTweak: isTweak))
+                let isEnabled = !fileName.hasSuffix(LCTweakItem.disabledSuffix)
+                let baseName = isEnabled ? fileName : String(fileName.dropLast(LCTweakItem.disabledSuffix.count))
+                let isFramework = isDirectory.boolValue && baseName.hasSuffix(".framework")
+                let isTweak = !isDirectory.boolValue && baseName.hasSuffix(".dylib")
+                items.append(LCTweakItem(fileUrl: fileUrl, isFolder: isDirectory.boolValue, isFramework: isFramework, isTweak: isTweak, isEnabled: isEnabled))
             }
         } catch {
             NSLog("[LC] failed to load tweaks \(error.localizedDescription)")
@@ -744,44 +596,7 @@ struct LCTweakFolderView : View {
         }
     }
 
-    private static func loadDisabledTweaks(_ folderURL: URL) -> Set<String> {
-        let infoPath = folderURL.appendingPathComponent("TweakInfo.plist").path
-        guard let info = NSDictionary(contentsOfFile: infoPath),
-              let disabled = info[lcDisabledTweaksKey] as? [String] else {
-            return []
-        }
-        return Set(disabled)
-    }
 
-    private func persistDisabledTweaks() throws {
-        let infoPath = baseUrl.appendingPathComponent("TweakInfo.plist").path
-        let info = NSMutableDictionary(contentsOfFile: infoPath) ?? NSMutableDictionary()
-        if disabledTweaks.isEmpty {
-            info.removeObject(forKey: lcDisabledTweaksKey)
-        } else {
-            info[lcDisabledTweaksKey] = disabledTweaks.sorted()
-        }
-        if !info.write(toFile: infoPath, atomically: true) {
-            throw "lc.tweakView.error.updateSettings".loc
-        }
-    }
-
-    private static func removeDisabledFlag(name: String, in folderURL: URL) throws {
-        let infoPath = folderURL.appendingPathComponent("TweakInfo.plist").path
-        let info = NSMutableDictionary(contentsOfFile: infoPath) ?? NSMutableDictionary()
-        guard var disabled = info[lcDisabledTweaksKey] as? [String] else {
-            return
-        }
-        disabled.removeAll { $0 == name }
-        if disabled.isEmpty {
-            info.removeObject(forKey: lcDisabledTweaksKey)
-        } else {
-            info[lcDisabledTweaksKey] = disabled
-        }
-        if !info.write(toFile: infoPath, atomically: true) {
-            throw "lc.tweakView.error.updateSettings".loc
-        }
-    }
 
     private func syncRootTweakFoldersIfNeeded() {
         guard isRoot else {
