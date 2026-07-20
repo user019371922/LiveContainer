@@ -9,7 +9,7 @@
 
 UIInterfaceOrientation LCOrientationLock = UIInterfaceOrientationUnknown;
 NSMutableArray<NSString*>* LCSupportedUrlSchemes = nil;
-+NSUUID* idForVendorUUID = nil;
+NSUUID* idForVendorUUID = nil;
 BOOL spoofProfileEnabled = NO;
 BOOL blockDeviceInfoReads = NO;
 BOOL strictTestMode = NO;
