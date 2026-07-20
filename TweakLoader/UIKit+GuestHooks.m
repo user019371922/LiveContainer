@@ -84,7 +84,7 @@ NSInteger spoofAccessibilityContrast = UIAccessibilityContrastNormal;
 NSInteger spoofDisplayGamut = UIDisplayGamutP3;
 NSInteger spoofHorizontalSizeClass = UIUserInterfaceSizeClassCompact;
 NSInteger spoofVerticalSizeClass = UIUserInterfaceSizeClassRegular;
-UIContentSizeCategory spoofPreferredContentSizeCategory = UIContentSizeCategoryLarge;
+UIContentSizeCategory spoofPreferredContentSizeCategory = nil;
 UIEdgeInsets spoofSafeAreaInsets = {59, 0, 34, 0};
 long long spoofStorageTotalCapacity = 128LL * 1024LL * 1024LL * 1024LL;
 long long spoofStorageAvailableCapacity = 64LL * 1024LL * 1024LL * 1024LL;
@@ -910,7 +910,7 @@ static void LCRotateSpoofProfile(void) {
         if(spoofScreenBrightness >= 0) spoofScreenBrightness = (CGFloat)arc4random_uniform(101) / 100.0;
         spoofUserInterfaceStyle = arc4random_uniform(2) == 0 ? UIUserInterfaceStyleLight : UIUserInterfaceStyleDark;
         spoofDisplayGamut = arc4random_uniform(4) == 0 ? UIDisplayGamutSRGB : UIDisplayGamutP3;
-        NSArray<UIContentSizeCategory> *contentSizes = @[
+        NSArray<NSString *> *contentSizes = @[
             UIContentSizeCategoryMedium, UIContentSizeCategoryLarge, UIContentSizeCategoryExtraLarge
         ];
         spoofPreferredContentSizeCategory = LCRandomArrayValue(contentSizes);
@@ -2415,7 +2415,9 @@ static id LCStorageProfileValue(NSURLResourceKey key) {
 }
 
 - (UIContentSizeCategory)hook_preferredContentSizeCategory {
-    if(spoofProfileEnabled && spoofDisplayCategoryEnabled) return spoofPreferredContentSizeCategory;
+    if(spoofProfileEnabled && spoofDisplayCategoryEnabled) {
+        return spoofPreferredContentSizeCategory ?: UIContentSizeCategoryLarge;
+    }
     return [self hook_preferredContentSizeCategory];
 }
 
