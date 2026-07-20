@@ -1094,7 +1094,11 @@ struct LCContainerView : View {
         }
         if let gpu = MTLCreateSystemDefaultDevice() {
             container.spoofGPUName = gpu.name
-            container.spoofGPUWorkingSetSize = Int64(gpu.recommendedMaxWorkingSetSize)
+            if #available(iOS 16.0, *) {
+                container.spoofGPUWorkingSetSize = Int64(clamping: gpu.recommendedMaxWorkingSetSize)
+            } else {
+                container.spoofGPUWorkingSetSize = Int64(clamping: ProcessInfo.processInfo.physicalMemory / 2)
+            }
         }
         let audio = AVAudioSession.sharedInstance()
         container.spoofAudioOutputVolume = Double(audio.outputVolume)
