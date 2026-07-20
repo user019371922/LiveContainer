@@ -31,6 +31,24 @@ class LCContainer : ObservableObject, Hashable {
     @Published var strictAutoWipeOnExit: Bool
     @Published var blockDeviceInfoReads: Bool
     @Published var spoofProfileEnabled: Bool
+    @Published var rotateSpoofProfileOnLaunch: Bool
+    @Published var rotateOSMajorVersions: String
+    @Published var rotateUsesRealDeviceTemplates: Bool
+    @Published var spoofIdentityCategoryEnabled: Bool
+    @Published var spoofSystemCategoryEnabled: Bool
+    @Published var spoofDisplayCategoryEnabled: Bool
+    @Published var spoofLocaleCategoryEnabled: Bool
+    @Published var spoofBatteryCategoryEnabled: Bool
+    @Published var spoofTelephonyCategoryEnabled: Bool
+    @Published var spoofNetworkHeadersCategoryEnabled: Bool
+    @Published var spoofAccessibilityCategoryEnabled: Bool
+    @Published var spoofStorageCategoryEnabled: Bool
+    @Published var spoofNetworkEnvironmentCategoryEnabled: Bool
+    @Published var spoofAudioCategoryEnabled: Bool
+    @Published var spoofGraphicsCategoryEnabled: Bool
+    @Published var spoofWebViewCategoryEnabled: Bool
+    @Published var spoofAppPrivacyCategoryEnabled: Bool
+    @Published var spoofSensorsAndUserDataCategoryEnabled: Bool
     @Published var spoofDeviceName: String
     @Published var spoofDeviceModel: String
     @Published var spoofSystemName: String
@@ -46,6 +64,25 @@ class LCContainer : ObservableObject, Hashable {
     @Published var spoofSubscriberSIMInserted: Bool
     @Published var spoofRadioAccessTechnology: String
     @Published var spoofHardwareModel: String
+    @Published var spoofHostName: String
+    @Published var spoofBoardModel: String
+    @Published var spoofKernelVersion: String
+    @Published var spoofBootTime: Int64
+    @Published var spoofCPUType: Int
+    @Published var spoofCPUSubtype: Int
+    @Published var spoofProcessorCount: Int
+    @Published var spoofPhysicalMemory: Int64
+    @Published var spoofThermalState: Int
+    @Published var spoofScreenWidth: Double
+    @Published var spoofScreenHeight: Double
+    @Published var spoofScreenScale: Double
+    @Published var spoofScreenNativeScale: Double
+    @Published var spoofMaximumFramesPerSecond: Int
+    @Published var spoofScreenBrightness: Double
+    @Published var spoofStorageTotalCapacity: Int64
+    @Published var spoofStorageAvailableCapacity: Int64
+    @Published var spoofGPUName: String
+    @Published var spoofAudioOutputVolume: Double
     private var infoDict : [String:Any]?
     public var containerURL : URL {
         if let resolvedContainerURL {
@@ -95,6 +132,24 @@ class LCContainer : ObservableObject, Hashable {
         strictAutoWipeOnExit: Bool = false,
         blockDeviceInfoReads: Bool = false,
         spoofProfileEnabled: Bool = false,
+        rotateSpoofProfileOnLaunch: Bool = false,
+        rotateOSMajorVersions: String = "18,26,27",
+        rotateUsesRealDeviceTemplates: Bool = true,
+        spoofIdentityCategoryEnabled: Bool = true,
+        spoofSystemCategoryEnabled: Bool = true,
+        spoofDisplayCategoryEnabled: Bool = true,
+        spoofLocaleCategoryEnabled: Bool = true,
+        spoofBatteryCategoryEnabled: Bool = true,
+        spoofTelephonyCategoryEnabled: Bool = true,
+        spoofNetworkHeadersCategoryEnabled: Bool = true,
+        spoofAccessibilityCategoryEnabled: Bool = true,
+        spoofStorageCategoryEnabled: Bool = true,
+        spoofNetworkEnvironmentCategoryEnabled: Bool = true,
+        spoofAudioCategoryEnabled: Bool = true,
+        spoofGraphicsCategoryEnabled: Bool = true,
+        spoofWebViewCategoryEnabled: Bool = true,
+        spoofAppPrivacyCategoryEnabled: Bool = true,
+        spoofSensorsAndUserDataCategoryEnabled: Bool = true,
         spoofDeviceName: String = "",
         spoofDeviceModel: String = "",
         spoofSystemName: String = "",
@@ -110,6 +165,25 @@ class LCContainer : ObservableObject, Hashable {
         spoofSubscriberSIMInserted: Bool = false,
         spoofRadioAccessTechnology: String = "",
         spoofHardwareModel: String = "",
+        spoofHostName: String = "",
+        spoofBoardModel: String = "",
+        spoofKernelVersion: String = "Darwin Kernel Version 25.0.0",
+        spoofBootTime: Int64 = 0,
+        spoofCPUType: Int = 16_777_228,
+        spoofCPUSubtype: Int = 2,
+        spoofProcessorCount: Int = 6,
+        spoofPhysicalMemory: Int64 = 6_442_450_944,
+        spoofThermalState: Int = 0,
+        spoofScreenWidth: Double = 1179,
+        spoofScreenHeight: Double = 2556,
+        spoofScreenScale: Double = 3,
+        spoofScreenNativeScale: Double = 3,
+        spoofMaximumFramesPerSecond: Int = 60,
+        spoofScreenBrightness: Double = 0.5,
+        spoofStorageTotalCapacity: Int64 = 137_438_953_472,
+        spoofStorageAvailableCapacity: Int64 = 68_719_476_736,
+        spoofGPUName: String = "Apple GPU",
+        spoofAudioOutputVolume: Double = 0.5,
         bookmarkData: Data? = nil,
         resolvedContainerURL: URL? = nil
     ) {
@@ -122,6 +196,24 @@ class LCContainer : ObservableObject, Hashable {
         self.strictAutoWipeOnExit = strictAutoWipeOnExit
         self.blockDeviceInfoReads = blockDeviceInfoReads
         self.spoofProfileEnabled = spoofProfileEnabled
+        self.rotateSpoofProfileOnLaunch = rotateSpoofProfileOnLaunch
+        self.rotateOSMajorVersions = rotateOSMajorVersions
+        self.rotateUsesRealDeviceTemplates = rotateUsesRealDeviceTemplates
+        self.spoofIdentityCategoryEnabled = spoofIdentityCategoryEnabled
+        self.spoofSystemCategoryEnabled = spoofSystemCategoryEnabled
+        self.spoofDisplayCategoryEnabled = spoofDisplayCategoryEnabled
+        self.spoofLocaleCategoryEnabled = spoofLocaleCategoryEnabled
+        self.spoofBatteryCategoryEnabled = spoofBatteryCategoryEnabled
+        self.spoofTelephonyCategoryEnabled = spoofTelephonyCategoryEnabled
+        self.spoofNetworkHeadersCategoryEnabled = spoofNetworkHeadersCategoryEnabled
+        self.spoofAccessibilityCategoryEnabled = spoofAccessibilityCategoryEnabled
+        self.spoofStorageCategoryEnabled = spoofStorageCategoryEnabled
+        self.spoofNetworkEnvironmentCategoryEnabled = spoofNetworkEnvironmentCategoryEnabled
+        self.spoofAudioCategoryEnabled = spoofAudioCategoryEnabled
+        self.spoofGraphicsCategoryEnabled = spoofGraphicsCategoryEnabled
+        self.spoofWebViewCategoryEnabled = spoofWebViewCategoryEnabled
+        self.spoofAppPrivacyCategoryEnabled = spoofAppPrivacyCategoryEnabled
+        self.spoofSensorsAndUserDataCategoryEnabled = spoofSensorsAndUserDataCategoryEnabled
         self.spoofDeviceName = spoofDeviceName
         self.spoofDeviceModel = spoofDeviceModel
         self.spoofSystemName = spoofSystemName
@@ -137,6 +229,25 @@ class LCContainer : ObservableObject, Hashable {
         self.spoofSubscriberSIMInserted = spoofSubscriberSIMInserted
         self.spoofRadioAccessTechnology = spoofRadioAccessTechnology
         self.spoofHardwareModel = spoofHardwareModel
+        self.spoofHostName = spoofHostName
+        self.spoofBoardModel = spoofBoardModel
+        self.spoofKernelVersion = spoofKernelVersion
+        self.spoofBootTime = spoofBootTime
+        self.spoofCPUType = spoofCPUType
+        self.spoofCPUSubtype = spoofCPUSubtype
+        self.spoofProcessorCount = spoofProcessorCount
+        self.spoofPhysicalMemory = spoofPhysicalMemory
+        self.spoofThermalState = spoofThermalState
+        self.spoofScreenWidth = spoofScreenWidth
+        self.spoofScreenHeight = spoofScreenHeight
+        self.spoofScreenScale = spoofScreenScale
+        self.spoofScreenNativeScale = spoofScreenNativeScale
+        self.spoofMaximumFramesPerSecond = spoofMaximumFramesPerSecond
+        self.spoofScreenBrightness = spoofScreenBrightness
+        self.spoofStorageTotalCapacity = spoofStorageTotalCapacity
+        self.spoofStorageAvailableCapacity = spoofStorageAvailableCapacity
+        self.spoofGPUName = spoofGPUName
+        self.spoofAudioOutputVolume = spoofAudioOutputVolume
         self.storageBookMark = bookmarkData
         self.resolvedContainerURL = resolvedContainerURL
     }
@@ -153,6 +264,24 @@ class LCContainer : ObservableObject, Hashable {
                   strictAutoWipeOnExit: false,
                   blockDeviceInfoReads: false,
                   spoofProfileEnabled: false,
+                  rotateSpoofProfileOnLaunch: false,
+                  rotateOSMajorVersions: "18,26,27",
+                  rotateUsesRealDeviceTemplates: true,
+                  spoofIdentityCategoryEnabled: true,
+                  spoofSystemCategoryEnabled: true,
+                  spoofDisplayCategoryEnabled: true,
+                  spoofLocaleCategoryEnabled: true,
+                  spoofBatteryCategoryEnabled: true,
+                  spoofTelephonyCategoryEnabled: true,
+                  spoofNetworkHeadersCategoryEnabled: true,
+                  spoofAccessibilityCategoryEnabled: true,
+                  spoofStorageCategoryEnabled: true,
+                  spoofNetworkEnvironmentCategoryEnabled: true,
+                  spoofAudioCategoryEnabled: true,
+                  spoofGraphicsCategoryEnabled: true,
+                  spoofWebViewCategoryEnabled: true,
+                  spoofAppPrivacyCategoryEnabled: true,
+                  spoofSensorsAndUserDataCategoryEnabled: true,
                   spoofDeviceName: "",
                   spoofDeviceModel: "",
                   spoofSystemName: "",
@@ -168,6 +297,25 @@ class LCContainer : ObservableObject, Hashable {
                   spoofSubscriberSIMInserted: false,
                   spoofRadioAccessTechnology: "",
                   spoofHardwareModel: "",
+                  spoofHostName: "",
+                  spoofBoardModel: "",
+                  spoofKernelVersion: "Darwin Kernel Version 25.0.0",
+                  spoofBootTime: 0,
+                  spoofCPUType: 16_777_228,
+                  spoofCPUSubtype: 2,
+                  spoofProcessorCount: 6,
+                  spoofPhysicalMemory: 6_442_450_944,
+                  spoofThermalState: 0,
+                  spoofScreenWidth: 1179,
+                  spoofScreenHeight: 2556,
+                  spoofScreenScale: 3,
+                  spoofScreenNativeScale: 3,
+                  spoofMaximumFramesPerSecond: 60,
+                  spoofScreenBrightness: 0.5,
+                  spoofStorageTotalCapacity: 137_438_953_472,
+                  spoofStorageAvailableCapacity: 68_719_476_736,
+                  spoofGPUName: "Apple GPU",
+                  spoofAudioOutputVolume: 0.5,
                   bookmarkData: bookmarkData,
                   resolvedContainerURL: nil
         )
@@ -202,6 +350,7 @@ class LCContainer : ObservableObject, Hashable {
                 strictAutoWipeOnExit = plistInfo["strictAutoWipeOnExit"] as? Bool ?? false
                 blockDeviceInfoReads = plistInfo["blockDeviceInfoReads"] as? Bool ?? false
                 spoofProfileEnabled = plistInfo["spoofProfileEnabled"] as? Bool ?? false
+                loadSpoofCategorySettings(from: plistInfo)
                 spoofDeviceName = plistInfo["spoofDeviceName"] as? String ?? ""
                 spoofDeviceModel = plistInfo["spoofDeviceModel"] as? String ?? ""
                 spoofSystemName = plistInfo["spoofSystemName"] as? String ?? ""
@@ -217,6 +366,7 @@ class LCContainer : ObservableObject, Hashable {
                 spoofSubscriberSIMInserted = plistInfo["spoofSubscriberSIMInserted"] as? Bool ?? false
                 spoofRadioAccessTechnology = plistInfo["spoofRadioAccessTechnology"] as? String ?? ""
                 spoofHardwareModel = plistInfo["spoofHardwareModel"] as? String ?? ""
+                loadSystemDisplayProfile(from: plistInfo)
             }
         } catch {
             
@@ -244,7 +394,25 @@ class LCContainer : ObservableObject, Hashable {
             "strictTestMode": strictTestMode,
             "strictAutoWipeOnExit": strictAutoWipeOnExit,
             "blockDeviceInfoReads": blockDeviceInfoReads,
-            "spoofProfileEnabled": spoofProfileEnabled
+            "spoofProfileEnabled": spoofProfileEnabled,
+            "rotateSpoofProfileOnLaunch": rotateSpoofProfileOnLaunch,
+            "rotateOSMajorVersions": rotateOSMajorVersions,
+            "rotateUsesRealDeviceTemplates": rotateUsesRealDeviceTemplates,
+            "spoofIdentityCategoryEnabled": spoofIdentityCategoryEnabled,
+            "spoofSystemCategoryEnabled": spoofSystemCategoryEnabled,
+            "spoofDisplayCategoryEnabled": spoofDisplayCategoryEnabled,
+            "spoofLocaleCategoryEnabled": spoofLocaleCategoryEnabled,
+            "spoofBatteryCategoryEnabled": spoofBatteryCategoryEnabled,
+            "spoofTelephonyCategoryEnabled": spoofTelephonyCategoryEnabled,
+            "spoofNetworkHeadersCategoryEnabled": spoofNetworkHeadersCategoryEnabled,
+            "spoofAccessibilityCategoryEnabled": spoofAccessibilityCategoryEnabled,
+            "spoofStorageCategoryEnabled": spoofStorageCategoryEnabled,
+            "spoofNetworkEnvironmentCategoryEnabled": spoofNetworkEnvironmentCategoryEnabled,
+            "spoofAudioCategoryEnabled": spoofAudioCategoryEnabled,
+            "spoofGraphicsCategoryEnabled": spoofGraphicsCategoryEnabled,
+            "spoofWebViewCategoryEnabled": spoofWebViewCategoryEnabled,
+            "spoofAppPrivacyCategoryEnabled": spoofAppPrivacyCategoryEnabled,
+            "spoofSensorsAndUserDataCategoryEnabled": spoofSensorsAndUserDataCategoryEnabled
         ]
         if let spoofedIdentifier {
             infoDict!["spoofedIdentifierForVendor"] = spoofedIdentifier
@@ -284,6 +452,11 @@ class LCContainer : ObservableObject, Hashable {
         if !spoofHardwareModel.isEmpty {
             infoDict!["spoofHardwareModel"] = spoofHardwareModel
         }
+        infoDict!["spoofStorageTotalCapacity"] = spoofStorageTotalCapacity
+        infoDict!["spoofStorageAvailableCapacity"] = spoofStorageAvailableCapacity
+        infoDict!["spoofGPUName"] = spoofGPUName
+        infoDict!["spoofAudioOutputVolume"] = spoofAudioOutputVolume
+        writeSystemDisplayProfile(to: &infoDict!)
         
         do {
             let fm = FileManager.default
@@ -315,6 +488,7 @@ class LCContainer : ObservableObject, Hashable {
         strictAutoWipeOnExit = infoDict["strictAutoWipeOnExit"] as? Bool ?? false
         blockDeviceInfoReads = infoDict["blockDeviceInfoReads"] as? Bool ?? false
         spoofProfileEnabled = infoDict["spoofProfileEnabled"] as? Bool ?? false
+        loadSpoofCategorySettings(from: infoDict)
         spoofDeviceName = infoDict["spoofDeviceName"] as? String ?? ""
         spoofDeviceModel = infoDict["spoofDeviceModel"] as? String ?? ""
         spoofSystemName = infoDict["spoofSystemName"] as? String ?? ""
@@ -330,6 +504,69 @@ class LCContainer : ObservableObject, Hashable {
         spoofSubscriberSIMInserted = infoDict["spoofSubscriberSIMInserted"] as? Bool ?? false
         spoofRadioAccessTechnology = infoDict["spoofRadioAccessTechnology"] as? String ?? ""
         spoofHardwareModel = infoDict["spoofHardwareModel"] as? String ?? ""
+        loadSystemDisplayProfile(from: infoDict)
+    }
+
+    private func loadSystemDisplayProfile(from dictionary: [String: Any]) {
+        spoofHostName = dictionary["spoofHostName"] as? String ?? ""
+        spoofBoardModel = dictionary["spoofBoardModel"] as? String ?? ""
+        spoofKernelVersion = dictionary["spoofKernelVersion"] as? String ?? "Darwin Kernel Version 25.0.0"
+        spoofBootTime = dictionary["spoofBootTime"] as? Int64
+            ?? Int64(Date().timeIntervalSince1970 - ProcessInfo.processInfo.systemUptime)
+        spoofCPUType = dictionary["spoofCPUType"] as? Int ?? 16_777_228
+        spoofCPUSubtype = dictionary["spoofCPUSubtype"] as? Int ?? 2
+        spoofProcessorCount = dictionary["spoofProcessorCount"] as? Int ?? 6
+        spoofPhysicalMemory = dictionary["spoofPhysicalMemory"] as? Int64 ?? 6_442_450_944
+        spoofThermalState = dictionary["spoofThermalState"] as? Int ?? 0
+        spoofScreenWidth = dictionary["spoofScreenWidth"] as? Double ?? 1179
+        spoofScreenHeight = dictionary["spoofScreenHeight"] as? Double ?? 2556
+        spoofScreenScale = dictionary["spoofScreenScale"] as? Double ?? 3
+        spoofScreenNativeScale = dictionary["spoofScreenNativeScale"] as? Double ?? 3
+        spoofMaximumFramesPerSecond = dictionary["spoofMaximumFramesPerSecond"] as? Int ?? 60
+        spoofScreenBrightness = dictionary["spoofScreenBrightness"] as? Double ?? 0.5
+        spoofStorageTotalCapacity = dictionary["spoofStorageTotalCapacity"] as? Int64 ?? 137_438_953_472
+        spoofStorageAvailableCapacity = dictionary["spoofStorageAvailableCapacity"] as? Int64 ?? 68_719_476_736
+        spoofGPUName = dictionary["spoofGPUName"] as? String ?? "Apple GPU"
+        spoofAudioOutputVolume = dictionary["spoofAudioOutputVolume"] as? Double ?? 0.5
+    }
+
+    private func loadSpoofCategorySettings(from dictionary: [String: Any]) {
+        rotateSpoofProfileOnLaunch = dictionary["rotateSpoofProfileOnLaunch"] as? Bool ?? false
+        rotateOSMajorVersions = dictionary["rotateOSMajorVersions"] as? String ?? "18,26,27"
+        rotateUsesRealDeviceTemplates = dictionary["rotateUsesRealDeviceTemplates"] as? Bool ?? true
+        spoofIdentityCategoryEnabled = dictionary["spoofIdentityCategoryEnabled"] as? Bool ?? true
+        spoofSystemCategoryEnabled = dictionary["spoofSystemCategoryEnabled"] as? Bool ?? true
+        spoofDisplayCategoryEnabled = dictionary["spoofDisplayCategoryEnabled"] as? Bool ?? true
+        spoofLocaleCategoryEnabled = dictionary["spoofLocaleCategoryEnabled"] as? Bool ?? true
+        spoofBatteryCategoryEnabled = dictionary["spoofBatteryCategoryEnabled"] as? Bool ?? true
+        spoofTelephonyCategoryEnabled = dictionary["spoofTelephonyCategoryEnabled"] as? Bool ?? true
+        spoofNetworkHeadersCategoryEnabled = dictionary["spoofNetworkHeadersCategoryEnabled"] as? Bool ?? true
+        spoofAccessibilityCategoryEnabled = dictionary["spoofAccessibilityCategoryEnabled"] as? Bool ?? true
+        spoofStorageCategoryEnabled = dictionary["spoofStorageCategoryEnabled"] as? Bool ?? true
+        spoofNetworkEnvironmentCategoryEnabled = dictionary["spoofNetworkEnvironmentCategoryEnabled"] as? Bool ?? true
+        spoofAudioCategoryEnabled = dictionary["spoofAudioCategoryEnabled"] as? Bool ?? true
+        spoofGraphicsCategoryEnabled = dictionary["spoofGraphicsCategoryEnabled"] as? Bool ?? true
+        spoofWebViewCategoryEnabled = dictionary["spoofWebViewCategoryEnabled"] as? Bool ?? true
+        spoofAppPrivacyCategoryEnabled = dictionary["spoofAppPrivacyCategoryEnabled"] as? Bool ?? true
+        spoofSensorsAndUserDataCategoryEnabled = dictionary["spoofSensorsAndUserDataCategoryEnabled"] as? Bool ?? true
+    }
+
+    private func writeSystemDisplayProfile(to dictionary: inout [String: Any]) {
+        if !spoofHostName.isEmpty { dictionary["spoofHostName"] = spoofHostName }
+        if !spoofBoardModel.isEmpty { dictionary["spoofBoardModel"] = spoofBoardModel }
+        if !spoofKernelVersion.isEmpty { dictionary["spoofKernelVersion"] = spoofKernelVersion }
+        if spoofBootTime > 0 { dictionary["spoofBootTime"] = spoofBootTime }
+        if spoofCPUType > 0 { dictionary["spoofCPUType"] = spoofCPUType }
+        if spoofCPUSubtype >= 0 { dictionary["spoofCPUSubtype"] = spoofCPUSubtype }
+        if spoofProcessorCount > 0 { dictionary["spoofProcessorCount"] = spoofProcessorCount }
+        if spoofPhysicalMemory > 0 { dictionary["spoofPhysicalMemory"] = spoofPhysicalMemory }
+        if spoofThermalState >= 0 { dictionary["spoofThermalState"] = spoofThermalState }
+        if spoofScreenWidth > 0 { dictionary["spoofScreenWidth"] = spoofScreenWidth }
+        if spoofScreenHeight > 0 { dictionary["spoofScreenHeight"] = spoofScreenHeight }
+        if spoofScreenScale > 0 { dictionary["spoofScreenScale"] = spoofScreenScale }
+        if spoofScreenNativeScale > 0 { dictionary["spoofScreenNativeScale"] = spoofScreenNativeScale }
+        if spoofMaximumFramesPerSecond > 0 { dictionary["spoofMaximumFramesPerSecond"] = spoofMaximumFramesPerSecond }
+        if spoofScreenBrightness >= 0 { dictionary["spoofScreenBrightness"] = spoofScreenBrightness }
     }
     
     static func == (lhs: LCContainer, rhs: LCContainer) -> Bool {

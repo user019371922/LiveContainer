@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import Metal
+import AVFoundation
 
 protocol LCContainerViewDelegate {
     func unbindContainer(container: LCContainer)
@@ -19,6 +21,13 @@ protocol LCContainerViewDelegate {
 }
 
 struct LCContainerView : View {
+    private static let allLocaleIdentifiers = Array(Set(Locale.availableIdentifiers.map {
+        Locale.canonicalIdentifier(from: $0)
+    })).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    private static let allTimeZoneIdentifiers = TimeZone.knownTimeZoneIdentifiers.sorted {
+        $0.localizedStandardCompare($1) == .orderedAscending
+    }
+
     @ObservedObject var container : LCContainer
     let delegate : LCContainerViewDelegate
     @Binding var uiDefaultDataFolder : String?
@@ -56,6 +65,11 @@ struct LCContainerView : View {
 
     private var tweakLoaderDependentControlsEnabled: Bool {
         !delegate.isTweakLoaderInjectionDisabled()
+    }
+
+    private func categoryToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(title, isOn: isOn)
+            .onChange(of: isOn.wrappedValue) { _ in saveSpoofProfile() }
     }
     
     init(container: LCContainer, uiDefaultDataFolder : Binding<String?>, delegate: LCContainerViewDelegate) {
@@ -164,7 +178,7 @@ struct LCContainerView : View {
                     Toggle("Advanced Spoof Profile", isOn: $container.spoofProfileEnabled)
                         .disabled(!tweakLoaderDependentControlsEnabled)
                         .onChange(of: container.spoofProfileEnabled) { _ in
-                            if container.spoofProfileEnabled {
+                            if container.spoofProfileEnabled && !hasConfiguredSpoofTemplate() {
                                 applyRandomDeviceProfileValues()
                             }
                             saveSpoofProfile()
@@ -172,6 +186,43 @@ struct LCContainerView : View {
 
                     if container.spoofProfileEnabled {
                         Group {
+                        Toggle("Rotate Profile Every Launch", isOn: $container.rotateSpoofProfileOnLaunch)
+                            .onChange(of: container.rotateSpoofProfileOnLaunch) { _ in saveSpoofProfile() }
+                        if container.rotateSpoofProfileOnLaunch {
+                            HStack {
+                                Text("OS Major Versions")
+                                TextField("18,26,27", text: $container.rotateOSMajorVersions)
+                                    .multilineTextAlignment(.trailing)
+                                    .keyboardType(.numbersAndPunctuation)
+                                    .onSubmit { saveSpoofProfile() }
+                            }
+                            Toggle("Use Real Device Templates", isOn: $container.rotateUsesRealDeviceTemplates)
+                                .onChange(of: container.rotateUsesRealDeviceTemplates) { _ in saveSpoofProfile() }
+                            Text("Enter exact major versions separated by commas. Real Device Templates rotate among known iPhone/iPad hardware identifiers; turn this off to preserve custom, Android-style, or empty device values.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        DisclosureGroup("Category Kill Switches") {
+                            categoryToggle("Identity", isOn: $container.spoofIdentityCategoryEnabled)
+                            categoryToggle("System", isOn: $container.spoofSystemCategoryEnabled)
+                            categoryToggle("Display", isOn: $container.spoofDisplayCategoryEnabled)
+                            categoryToggle("Locale & Time Zone", isOn: $container.spoofLocaleCategoryEnabled)
+                            categoryToggle("Battery & Power", isOn: $container.spoofBatteryCategoryEnabled)
+                            categoryToggle("Telephony", isOn: $container.spoofTelephonyCategoryEnabled)
+                            categoryToggle("Network Headers", isOn: $container.spoofNetworkHeadersCategoryEnabled)
+                            categoryToggle("Accessibility", isOn: $container.spoofAccessibilityCategoryEnabled)
+                            categoryToggle("Storage", isOn: $container.spoofStorageCategoryEnabled)
+                            categoryToggle("Network Environment", isOn: $container.spoofNetworkEnvironmentCategoryEnabled)
+                            categoryToggle("Audio Routes", isOn: $container.spoofAudioCategoryEnabled)
+                            categoryToggle("Graphics & Metal", isOn: $container.spoofGraphicsCategoryEnabled)
+                            categoryToggle("WebView Fingerprint", isOn: $container.spoofWebViewCategoryEnabled)
+                            categoryToggle("App, Account & Pasteboard", isOn: $container.spoofAppPrivacyCategoryEnabled)
+                            categoryToggle("Sensors & Personal Data", isOn: $container.spoofSensorsAndUserDataCategoryEnabled)
+                        }
+                        Text("Disable an individual category if an app depends on the real API. Sensors & Personal Data intentionally reports permissions or hardware as unavailable instead of fabricating contacts, photos, locations, or sensor samples.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Identity").font(.headline)
                         Toggle(isOn: $container.spoofIdentifierForVendor) {
                             Text("lc.container.spoofIdentifierForVendor".loc)
                         }
@@ -250,6 +301,16 @@ struct LCContainerView : View {
                                 saveSpoofProfile()
                             }
                         }
+                        .disabled(!container.spoofIdentityCategoryEnabled)
+                        HStack {
+                            Text("Custom Hardware Model")
+                            TextField("Empty, iPhone17,1, Android…", text: $typingSpoofHardwareModel)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .multilineTextAlignment(.trailing)
+                                .onSubmit { saveSpoofProfile() }
+                        }
+                        Text("Operating System").font(.headline)
                         HStack {
                             Text("System Name")
                             TextField("iOS", text: $typingSpoofSystemName)
@@ -266,6 +327,93 @@ struct LCContainerView : View {
                                     saveSpoofProfile()
                                 }
                         }
+                        DisclosureGroup("System & Display") {
+                            TextField("Host Name", text: $container.spoofHostName)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .onSubmit { saveSpoofProfile() }
+                            TextField("Board Model", text: $container.spoofBoardModel)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .onSubmit { saveSpoofProfile() }
+                            TextField("Kernel Version", text: $container.spoofKernelVersion)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .onSubmit { saveSpoofProfile() }
+                            TextField("Boot Time (Unix)", value: $container.spoofBootTime, format: .number)
+                                .keyboardType(.numberPad)
+                            TextField("CPU Type", value: $container.spoofCPUType, format: .number)
+                                .keyboardType(.numberPad)
+                            TextField("CPU Subtype", value: $container.spoofCPUSubtype, format: .number)
+                                .keyboardType(.numberPad)
+                            Stepper("Processor Cores: \(container.spoofProcessorCount)", value: $container.spoofProcessorCount, in: 1...16)
+                                .onChange(of: container.spoofProcessorCount) { _ in saveSpoofProfile() }
+                            Picker("Physical Memory", selection: $container.spoofPhysicalMemory) {
+                                Text("2 GB").tag(Int64(2 * 1_073_741_824))
+                                Text("3 GB").tag(Int64(3 * 1_073_741_824))
+                                Text("4 GB").tag(Int64(4 * 1_073_741_824))
+                                Text("6 GB").tag(Int64(6 * 1_073_741_824))
+                                Text("8 GB").tag(Int64(8 * 1_073_741_824))
+                                Text("12 GB").tag(Int64(12 * 1_073_741_824))
+                                Text("16 GB").tag(Int64(16 * 1_073_741_824))
+                            }
+                            .onChange(of: container.spoofPhysicalMemory) { _ in saveSpoofProfile() }
+                            Picker("Thermal State", selection: $container.spoofThermalState) {
+                                Text("Nominal").tag(0)
+                                Text("Fair").tag(1)
+                                Text("Serious").tag(2)
+                                Text("Critical").tag(3)
+                            }
+                            .onChange(of: container.spoofThermalState) { _ in saveSpoofProfile() }
+                            HStack {
+                                Text("Native Resolution")
+                                TextField("Width", value: $container.spoofScreenWidth, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                Text("×")
+                                TextField("Height", value: $container.spoofScreenHeight, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            HStack {
+                                Text("Screen Scale")
+                                TextField("3", value: $container.spoofScreenScale, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            HStack {
+                                Text("Native Scale")
+                                TextField("3", value: $container.spoofScreenNativeScale, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            Picker("Maximum FPS", selection: $container.spoofMaximumFramesPerSecond) {
+                                Text("60 Hz").tag(60)
+                                Text("120 Hz").tag(120)
+                            }
+                            .onChange(of: container.spoofMaximumFramesPerSecond) { _ in saveSpoofProfile() }
+                            HStack {
+                                Text("Brightness")
+                                TextField("0.50", value: $container.spoofScreenBrightness, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            TextField("Storage Total Bytes", value: $container.spoofStorageTotalCapacity, format: .number)
+                                .keyboardType(.numberPad)
+                            TextField("Storage Available Bytes", value: $container.spoofStorageAvailableCapacity, format: .number)
+                                .keyboardType(.numberPad)
+                            TextField("GPU Name", text: $container.spoofGPUName)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            HStack {
+                                Text("Audio Volume")
+                                TextField("0.50", value: $container.spoofAudioOutputVolume, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            Button("Save System & Display") { saveSpoofProfile() }
+                        }
+                        Text("Locale & Time Zone").font(.headline)
                         HStack {
                             Text("Locale ID")
                             TextField("en_US", text: $typingSpoofLocaleIdentifier)
@@ -274,6 +422,12 @@ struct LCContainerView : View {
                                     saveSpoofProfile()
                                 }
                         }
+                        Picker("All Locales", selection: $typingSpoofLocaleIdentifier) {
+                            Text("None").tag("")
+                            ForEach(Self.allLocaleIdentifiers, id: \.self) { identifier in
+                                Text(localeDisplayName(identifier)).tag(identifier)
+                            }
+                        }
                         HStack {
                             Text("Time Zone")
                             TextField("Asia/Riyadh", text: $typingSpoofTimeZoneIdentifier)
@@ -281,6 +435,12 @@ struct LCContainerView : View {
                                 .onSubmit {
                                     saveSpoofProfile()
                                 }
+                        }
+                        Picker("All Time Zones", selection: $typingSpoofTimeZoneIdentifier) {
+                            Text("None").tag("")
+                            ForEach(Self.allTimeZoneIdentifiers, id: \.self) { identifier in
+                                Text(identifier).tag(identifier)
+                            }
                         }
                         Button("Use Current Device Values") {
                             applyCurrentDeviceProfileValues()
@@ -291,6 +451,7 @@ struct LCContainerView : View {
                             saveSpoofProfile()
                         }
 
+                        Text("Battery & Power").font(.headline)
                         HStack {
                             Text("Battery Level")
                             TextField("0.83", text: $typingSpoofBatteryLevel)
@@ -313,6 +474,7 @@ struct LCContainerView : View {
                                 saveSpoofProfile()
                             }
 
+                        Text("Telephony").font(.headline)
                         HStack {
                             Text("Subscriber ID")
                             TextField("A1B2C3D4-E5F6-47A8-9C2D-1234567890AB", text: $typingSpoofSubscriberIdentifier)
@@ -354,7 +516,7 @@ struct LCContainerView : View {
                     Text("Spoof Profile")
                 } footer: {
                     if tweakLoaderDependentControlsEnabled {
-                        Text("Overrides UIDevice (including identifierForVendor), NSProcessInfo, Locale/TimeZone, sysctlbyname(hw.machine), uname(), and modern CoreTelephony subscriber surfaces (CTSubscriber/CTSubscriberInfo + serviceCurrentRadioAccessTechnology). If Block Device Info Reads is enabled, unknown/empty values are returned instead.")
+                        Text("Each category has an independent kill switch. Rotate Profile Every Launch generates an in-memory profile for that guest process without overwriting the saved template. Locale and time-zone pickers include every identifier provided by the installed OS.")
                     } else {
                         Text("Spoof controls require TweakLoader injection. Disable Don't Inject TweakLoader in App Settings to use this.")
                     }
@@ -500,8 +662,13 @@ struct LCContainerView : View {
     }
     
     func saveSpoofProfile() {
+        if container.rotateSpoofProfileOnLaunch && parsedRotationOSMajors() == nil {
+            errorInfo = "OS Major Versions must be a comma-separated list of numbers, for example 18,26,27."
+            errorShow = true
+            return
+        }
         let rawIDFV = typingIDFV.trimmingCharacters(in: .whitespacesAndNewlines)
-        if container.spoofIdentifierForVendor {
+        if container.spoofIdentityCategoryEnabled && container.spoofIdentifierForVendor {
             if rawIDFV.isEmpty {
                 let generatedIDFV = UUID().uuidString
                 typingIDFV = generatedIDFV
@@ -515,12 +682,12 @@ struct LCContainerView : View {
                 errorShow = true
                 return
             }
-        } else {
+        } else if container.spoofIdentityCategoryEnabled {
             container.spoofedIdentifier = nil
         }
 
         let normalizedSystemVersion = typingSpoofSystemVersion.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !normalizedSystemVersion.isEmpty && !isValidSystemVersion(normalizedSystemVersion) {
+        if container.spoofSystemCategoryEnabled && !normalizedSystemVersion.isEmpty && !isValidSystemVersion(normalizedSystemVersion) {
             errorInfo = "System Version must use numbers like 26 or 26.1 or 26.1.2."
             errorShow = true
             return
@@ -530,6 +697,8 @@ struct LCContainerView : View {
         let normalizedLocale: String
         if rawLocale.isEmpty {
             normalizedLocale = ""
+        } else if !container.spoofLocaleCategoryEnabled {
+            normalizedLocale = rawLocale
         } else if let localeIdentifier = normalizedLocaleIdentifier(rawLocale) {
             normalizedLocale = localeIdentifier
         } else {
@@ -542,6 +711,8 @@ struct LCContainerView : View {
         let normalizedTimeZone: String
         if rawTimeZone.isEmpty {
             normalizedTimeZone = ""
+        } else if !container.spoofLocaleCategoryEnabled {
+            normalizedTimeZone = rawTimeZone
         } else if let zoneIdentifier = normalizedTimeZoneIdentifier(rawTimeZone) {
             normalizedTimeZone = zoneIdentifier
         } else {
@@ -551,7 +722,13 @@ struct LCContainerView : View {
         }
 
         let normalizedBattery = typingSpoofBatteryLevel.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let batteryLevel = Double(normalizedBattery), batteryLevel >= 0.0, batteryLevel <= 1.0 else {
+        if container.spoofBatteryCategoryEnabled && Double(normalizedBattery) == nil {
+            errorInfo = "Battery Level must be a number."
+            errorShow = true
+            return
+        }
+        let batteryLevel = Double(normalizedBattery) ?? container.spoofBatteryLevel
+        if container.spoofBatteryCategoryEnabled && !(batteryLevel >= 0.0 && batteryLevel <= 1.0) {
             errorInfo = "Battery Level must be between 0.0 and 1.0."
             errorShow = true
             return
@@ -559,15 +736,30 @@ struct LCContainerView : View {
 
         let subscriberID = typingSpoofSubscriberIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
         let subscriberTokenBase64 = typingSpoofSubscriberCarrierTokenBase64.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !subscriberTokenBase64.isEmpty && Data(base64Encoded: subscriberTokenBase64) == nil {
+        if container.spoofTelephonyCategoryEnabled && !subscriberTokenBase64.isEmpty && Data(base64Encoded: subscriberTokenBase64) == nil {
             errorInfo = "Carrier Token must be valid Base64."
             errorShow = true
             return
         }
 
         let radioTech = typingSpoofRadioAccessTechnology.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !availableRadioAccessTechnologies().contains(radioTech) {
-            errorInfo = "Radio Tech value is invalid."
+        let systemValuesValid = !container.spoofSystemCategoryEnabled || (
+              container.spoofProcessorCount > 0 &&
+              container.spoofPhysicalMemory > 0 &&
+              !container.spoofKernelVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+              container.spoofBootTime > 0 && container.spoofCPUType > 0 && container.spoofCPUSubtype >= 0)
+        let thermalValueValid = !container.spoofBatteryCategoryEnabled || (0...3).contains(container.spoofThermalState)
+        let displayValuesValid = !container.spoofDisplayCategoryEnabled || (
+              container.spoofScreenWidth > 0 && container.spoofScreenHeight > 0 &&
+              container.spoofScreenScale > 0 && container.spoofScreenNativeScale > 0 &&
+              container.spoofMaximumFramesPerSecond > 0 &&
+              container.spoofScreenBrightness >= 0 && container.spoofScreenBrightness <= 1)
+        let extendedValuesValid = (!container.spoofStorageCategoryEnabled || (
+              container.spoofStorageTotalCapacity > 0 && container.spoofStorageAvailableCapacity >= 0 &&
+              container.spoofStorageAvailableCapacity <= container.spoofStorageTotalCapacity)) &&
+            (!container.spoofAudioCategoryEnabled || (0...1).contains(container.spoofAudioOutputVolume))
+        guard systemValuesValid && thermalValueValid && displayValuesValid && extendedValuesValid else {
+            errorInfo = "Profile values are invalid. Capacities must be consistent, volume/brightness must be between 0 and 1, and enabled names cannot be empty."
             errorShow = true
             return
         }
@@ -587,7 +779,17 @@ struct LCContainerView : View {
         container.spoofSubscriberSIMInserted = spoofSubscriberSIMInserted
         container.spoofRadioAccessTechnology = radioTech
         container.spoofHardwareModel = typingSpoofHardwareModel
+        container.spoofHostName = container.spoofHostName.trimmingCharacters(in: .whitespacesAndNewlines)
+        container.spoofBoardModel = container.spoofBoardModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        container.spoofKernelVersion = container.spoofKernelVersion.trimmingCharacters(in: .whitespacesAndNewlines)
         saveContainer()
+    }
+
+    func hasConfiguredSpoofTemplate() -> Bool {
+        [typingSpoofDeviceName, typingSpoofDeviceModel, typingSpoofSystemName,
+         typingSpoofSystemVersion, typingSpoofLocaleIdentifier,
+         typingSpoofTimeZoneIdentifier, typingSpoofHardwareModel]
+            .contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     func applyCurrentDeviceProfileValues() {
@@ -608,22 +810,37 @@ struct LCContainerView : View {
         spoofSubscriberSIMInserted = false
         typingSpoofRadioAccessTechnology = "CTRadioAccessTechnologyLTE"
         typingSpoofHardwareModel = currentHardwareModel()
+        container.spoofHostName = currentSysctlString("kern.hostname")
+        container.spoofBoardModel = currentSysctlString("hw.model")
+        container.spoofKernelVersion = currentSysctlString("kern.version")
+        container.spoofBootTime = Int64(Date().timeIntervalSince1970 - ProcessInfo.processInfo.systemUptime)
+        container.spoofCPUType = Int(currentSysctlInt64("hw.cputype"))
+        container.spoofCPUSubtype = Int(currentSysctlInt64("hw.cpusubtype"))
+        container.spoofProcessorCount = ProcessInfo.processInfo.processorCount
+        container.spoofPhysicalMemory = Int64(ProcessInfo.processInfo.physicalMemory)
+        container.spoofThermalState = ProcessInfo.processInfo.thermalState.rawValue
+        if let screen = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.screen }).first {
+            container.spoofScreenWidth = screen.nativeBounds.width
+            container.spoofScreenHeight = screen.nativeBounds.height
+            container.spoofScreenScale = screen.scale
+            container.spoofScreenNativeScale = screen.nativeScale
+            container.spoofMaximumFramesPerSecond = screen.maximumFramesPerSecond
+            container.spoofScreenBrightness = screen.brightness
+        }
+        if let values = try? URL(fileURLWithPath: NSHomeDirectory()).resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityKey]) {
+            container.spoofStorageTotalCapacity = Int64(values.volumeTotalCapacity ?? Int(container.spoofStorageTotalCapacity))
+            container.spoofStorageAvailableCapacity = Int64(values.volumeAvailableCapacity ?? Int(container.spoofStorageAvailableCapacity))
+        }
+        container.spoofGPUName = MTLCreateSystemDefaultDevice()?.name ?? "Apple GPU"
+        container.spoofAudioOutputVolume = Double(AVAudioSession.sharedInstance().outputVolume)
     }
 
     func applyRandomDeviceProfileValues() {
-        let localeTimeZonePairs: [(String, String)] = [
-            ("en_US", "America/New_York"),
-            ("en_GB", "Europe/London"),
-            ("ar_SA", "Asia/Riyadh"),
-            ("fr_FR", "Europe/Paris"),
-            ("de_DE", "Europe/Berlin"),
-            ("ja_JP", "Asia/Tokyo"),
-            ("es_ES", "Europe/Madrid"),
-            ("tr_TR", "Europe/Istanbul"),
-            ("ko_KR", "Asia/Seoul"),
-            ("hi_IN", "Asia/Kolkata")
-        ]
-        let selectedLocaleZone = localeTimeZonePairs.randomElement() ?? ("en_US", "America/New_York")
+        let regionalLocales = Self.allLocaleIdentifiers.filter {
+            NSLocale.components(fromLocaleIdentifier: $0)[NSLocale.Key.countryCode.rawValue] != nil
+        }
+        let selectedLocale = regionalLocales.randomElement() ?? "en_US"
+        let selectedTimeZone = Self.allTimeZoneIdentifiers.randomElement() ?? "Etc/UTC"
 
         let isPad = UIDevice.current.userInterfaceIdiom == .pad
         let possibleNames = isPad
@@ -631,10 +848,10 @@ struct LCContainerView : View {
             : ["iPhone", "My iPhone", "iPhone Pro", "iPhone Plus"]
         let selectedName = possibleNames.randomElement() ?? (isPad ? "iPad" : "iPhone")
 
-        let currentSystemName = UIDevice.current.systemName
-        let majorVersion = Int(UIDevice.current.systemVersion.split(separator: ".").first ?? "26") ?? 26
-        let minorVersion = Int.random(in: 0...3)
-        let patchVersion = Int.random(in: 0...2)
+        let currentSystemName = typingSpoofSystemName.isEmpty ? UIDevice.current.systemName : typingSpoofSystemName
+        let majorVersion = parsedRotationOSMajors()?.randomElement() ?? 26
+        let minorVersion = Int.random(in: 0...7)
+        let patchVersion = Int.random(in: 0...3)
         let batteryLevel = Double.random(in: 0.18...1.0)
         let batteryStateOptions = [
             UIDevice.BatteryState.unplugged.rawValue,
@@ -655,8 +872,8 @@ struct LCContainerView : View {
         } else {
             typingSpoofSystemVersion = "\(majorVersion).\(minorVersion).\(patchVersion)"
         }
-        typingSpoofLocaleIdentifier = selectedLocaleZone.0
-        typingSpoofTimeZoneIdentifier = selectedLocaleZone.1
+        typingSpoofLocaleIdentifier = selectedLocale
+        typingSpoofTimeZoneIdentifier = selectedTimeZone
         typingSpoofBatteryLevel = String(format: "%.2f", batteryLevel)
         spoofBatteryStateSelection = batteryStateOptions.randomElement() ?? UIDevice.BatteryState.unplugged.rawValue
         spoofLowPowerModeEnabled = batteryLevel < 0.25
@@ -678,6 +895,46 @@ struct LCContainerView : View {
             ]
         }
         typingSpoofHardwareModel = hardwareModels.randomElement() ?? "iPhone17,3"
+        container.spoofHostName = "\(selectedName.replacingOccurrences(of: " ", with: "-"))"
+        container.spoofBoardModel = isPad ? "J720AP" : "D93AP"
+        let darwinMajor = majorVersion >= 26 ? majorVersion - 1 : majorVersion + 6
+        container.spoofKernelVersion = "Darwin Kernel Version \(darwinMajor).0.0"
+        container.spoofBootTime = Int64(Date().timeIntervalSince1970) - Int64.random(in: 86_400...1_209_600)
+        container.spoofCPUType = 16_777_228
+        container.spoofCPUSubtype = 2
+        container.spoofProcessorCount = [6, 8, 10].randomElement() ?? 6
+        container.spoofPhysicalMemory = Int64(([4, 6, 8, 12].randomElement() ?? 8) * 1_073_741_824)
+        container.spoofThermalState = [0, 0, 0, 1].randomElement() ?? 0
+        let displayProfiles: [(Double, Double, Double, Double, Int)] = isPad
+            ? [(1668, 2420, 2, 2, 120), (2064, 2752, 2, 2, 120)]
+            : [(1179, 2556, 3, 3, 60), (1206, 2622, 3, 3, 120), (1290, 2796, 3, 3, 120)]
+        let display = displayProfiles.randomElement() ?? (1179, 2556, 3, 3, 60)
+        container.spoofScreenWidth = display.0
+        container.spoofScreenHeight = display.1
+        container.spoofScreenScale = display.2
+        container.spoofScreenNativeScale = display.3
+        container.spoofMaximumFramesPerSecond = display.4
+        container.spoofScreenBrightness = Double.random(in: 0.25...0.85)
+        let storageGB = [64, 128, 256, 512, 1024].randomElement() ?? 128
+        container.spoofStorageTotalCapacity = Int64(storageGB) * 1_073_741_824
+        let maximumFreeGB = Int64(max(8, storageGB - 8))
+        container.spoofStorageAvailableCapacity = Int64.random(in: 8...maximumFreeGB) * 1_073_741_824
+        container.spoofGPUName = "Apple GPU"
+        container.spoofAudioOutputVolume = Double.random(in: 0.1...0.9)
+    }
+
+    private func parsedRotationOSMajors() -> [Int]? {
+        let values = container.rotateOSMajorVersions
+            .split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard !values.isEmpty,
+              values.allSatisfy({ value in
+                  guard !value.isEmpty, let major = Int(value) else { return false }
+                  return (1...99).contains(major)
+              }) else {
+            return nil
+        }
+        return Array(Set(values.compactMap(Int.init))).sorted()
     }
 
     func normalizedLocaleIdentifier(_ raw: String) -> String? {
@@ -689,6 +946,11 @@ struct LCContainerView : View {
             return canonical
         }
         return nil
+    }
+
+    func localeDisplayName(_ identifier: String) -> String {
+        let localized = Locale.current.localizedString(forIdentifier: identifier) ?? identifier
+        return "\(localized) — \(identifier)"
     }
 
     func normalizedTimeZoneIdentifier(_ raw: String) -> String? {
@@ -719,6 +981,24 @@ struct LCContainerView : View {
         var machine = [CChar](repeating: 0, count: size)
         sysctlbyname("hw.machine", &machine, &size, nil, 0)
         return String(cString: machine)
+    }
+
+    func currentSysctlString(_ name: String) -> String {
+        var size = 0
+        guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return "" }
+        var value = [CChar](repeating: 0, count: size)
+        guard sysctlbyname(name, &value, &size, nil, 0) == 0 else { return "" }
+        return String(cString: value)
+    }
+
+    func currentSysctlInt64(_ name: String) -> Int64 {
+        var value: Int64 = 0
+        var size = MemoryLayout<Int64>.size
+        if sysctlbyname(name, &value, &size, nil, 0) == 0 { return value }
+        var value32: Int32 = 0
+        size = MemoryLayout<Int32>.size
+        if sysctlbyname(name, &value32, &size, nil, 0) == 0 { return Int64(value32) }
+        return 0
     }
 
     func isValidSystemVersion(_ value: String) -> Bool {
