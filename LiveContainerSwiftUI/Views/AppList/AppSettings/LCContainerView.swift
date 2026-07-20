@@ -71,6 +71,22 @@ struct LCContainerView : View {
         Toggle(title, isOn: isOn)
             .onChange(of: isOn.wrappedValue) { _ in saveSpoofProfile() }
     }
+
+    private func featureBinding(_ key: String, default defaultValue: Bool = true) -> Binding<Bool> {
+        Binding(
+            get: { container.spoofFeatureOverrides[key] ?? defaultValue },
+            set: { value in
+                var overrides = container.spoofFeatureOverrides
+                overrides[key] = value
+                container.spoofFeatureOverrides = overrides
+                saveSpoofProfile()
+            }
+        )
+    }
+
+    private func featureToggle(_ title: String, _ key: String, default defaultValue: Bool = true) -> some View {
+        Toggle(title, isOn: featureBinding(key, default: defaultValue))
+    }
     
     init(container: LCContainer, uiDefaultDataFolder : Binding<String?>, delegate: LCContainerViewDelegate) {
         self._container = ObservedObject(initialValue: container)
@@ -330,6 +346,7 @@ struct LCContainerView : View {
                                     saveSpoofProfile()
                                 }
                         }
+                        featureToggle("Report Low Data Mode Disabled", "system.lowDataMode")
                         DisclosureGroup("Advanced Hardware & Display") {
                             TextField("Host Name", text: $container.spoofHostName)
                                 .textInputAutocapitalization(.never)
@@ -488,6 +505,7 @@ struct LCContainerView : View {
                                 Text(identifier).tag(identifier)
                             }
                         }
+                        featureToggle("Hide Active Keyboard/Input Modes", "locale.inputModes")
                         Button("Use Current Device Values") {
                             applyCurrentDeviceProfileValues()
                             saveSpoofProfile()
@@ -563,11 +581,13 @@ struct LCContainerView : View {
                         .disabled(!container.spoofTelephonyCategoryEnabled)
 
                         DisclosureGroup("Network Headers") {
-                            categoryToggle("Rewrite User-Agent and device headers", isOn: $container.spoofNetworkHeadersCategoryEnabled)
-                            Text("Uses the selected hardware model and system version for URLSession and WebKit-compatible request headers.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            featureToggle("Rewrite User-Agent Headers", "networkHeaders.userAgent")
+                            TextField("Custom User-Agent (empty = generated)", text: $container.spoofCustomUserAgent)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            Button("Save Network Headers") { saveSpoofProfile() }
                         }
+                        .disabled(!container.spoofNetworkHeadersCategoryEnabled)
 
                         DisclosureGroup("Accessibility & Appearance") {
                             Picker("Appearance", selection: $container.spoofUserInterfaceStyle) {
@@ -581,73 +601,150 @@ struct LCContainerView : View {
                                 Text("High").tag(1)
                             }
                             .onChange(of: container.spoofAccessibilityContrast) { _ in saveSpoofProfile() }
-                            Text("Other accessibility fingerprint APIs report a neutral, disabled state while this category is enabled.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            DisclosureGroup("Accessibility Features Reported Off") {
+                                featureToggle("VoiceOver", "accessibility.voiceOver")
+                                featureToggle("Switch Control", "accessibility.switchControl")
+                                featureToggle("Guided Access", "accessibility.guidedAccess")
+                                featureToggle("Grayscale", "accessibility.grayscale")
+                                featureToggle("Invert Colors", "accessibility.invertColors")
+                                featureToggle("Reduce Motion", "accessibility.reduceMotion")
+                                featureToggle("Reduce Transparency", "accessibility.reduceTransparency")
+                                featureToggle("AssistiveTouch", "accessibility.assistiveTouch")
+                                featureToggle("Shake to Undo", "accessibility.shakeToUndo")
+                                featureToggle("Bold Text", "accessibility.boldText")
+                                featureToggle("Darker System Colors", "accessibility.darkerColors")
+                                featureToggle("Mono Audio", "accessibility.monoAudio")
+                                featureToggle("Speak Screen", "accessibility.speakScreen")
+                                featureToggle("Speak Selection", "accessibility.speakSelection")
+                                featureToggle("Closed Captions", "accessibility.closedCaptions")
+                                featureToggle("Video Autoplay", "accessibility.videoAutoplay")
+                                featureToggle("Differentiate Without Color", "accessibility.differentiateWithoutColor")
+                                featureToggle("On/Off Switch Labels", "accessibility.onOffLabels")
+                            }
                         }
                         .disabled(!container.spoofAccessibilityCategoryEnabled)
 
                         DisclosureGroup("Storage") {
+                            featureToggle("Override Capacity", "storage.capacity")
                             TextField("Total Capacity (Bytes)", value: $container.spoofStorageTotalCapacity, format: .number)
                                 .keyboardType(.numberPad)
                             TextField("Available Capacity (Bytes)", value: $container.spoofStorageAvailableCapacity, format: .number)
+                                .keyboardType(.numberPad)
+                            featureToggle("Override Volume Identity", "storage.identity")
+                            TextField("Volume Name", text: $container.spoofStorageVolumeName)
+                            TextField("Volume UUID", text: $container.spoofStorageVolumeUUID)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            featureToggle("Override Creation Dates", "storage.creationDates")
+                            TextField("File Creation (Unix)", value: $container.spoofStorageFileCreationTime, format: .number)
+                                .keyboardType(.numberPad)
+                            TextField("Volume Creation (Unix)", value: $container.spoofStorageVolumeCreationTime, format: .number)
                                 .keyboardType(.numberPad)
                             Button("Save Storage") { saveSpoofProfile() }
                         }
                         .disabled(!container.spoofStorageCategoryEnabled)
 
                         DisclosureGroup("Network Environment") {
-                            categoryToggle("Hide local network environment", isOn: $container.spoofNetworkEnvironmentCategoryEnabled)
-                            Text("Covers hostname resolution, interface enumeration, VPN/proxy signals, Bonjour, and Network.framework browsing.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            featureToggle("Override Host Name", "network.hostName")
+                            featureToggle("Hide Network Interfaces", "network.interfaces")
+                            featureToggle("Stop Path Monitoring", "network.pathMonitor")
+                            featureToggle("Block Bonjour / Service Discovery", "network.serviceDiscovery")
+                            featureToggle("Hide Proxy and VPN Settings", "network.proxy")
                         }
+                        .disabled(!container.spoofNetworkEnvironmentCategoryEnabled)
 
                         DisclosureGroup("Audio Routes") {
+                            featureToggle("Hide Available Inputs", "audio.availableInputs")
+                            featureToggle("Hide Current Route Inputs/Outputs", "audio.routes")
+                            featureToggle("Override Output Volume", "audio.outputVolume")
                             HStack {
                                 Text("Output Volume")
                                 TextField("0.50", value: $container.spoofAudioOutputVolume, format: .number)
                                     .keyboardType(.decimalPad)
                                     .multilineTextAlignment(.trailing)
                             }
-                            Text("Route names, input devices, and output devices are hidden while enabled.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            featureToggle("Override Sample Rate", "audio.sampleRate")
+                            TextField("Sample Rate", value: $container.spoofAudioSampleRate, format: .number)
+                                .keyboardType(.decimalPad)
+                            featureToggle("Override Output Latency", "audio.outputLatency")
+                            TextField("Output Latency", value: $container.spoofAudioOutputLatency, format: .number)
+                                .keyboardType(.decimalPad)
+                            featureToggle("Override Input Latency", "audio.inputLatency")
+                            TextField("Input Latency", value: $container.spoofAudioInputLatency, format: .number)
+                                .keyboardType(.decimalPad)
+                            featureToggle("Override Other Audio Playing", "audio.otherPlaying")
+                            Toggle("Other Audio Playing", isOn: $container.spoofAudioOtherPlaying)
+                                .onChange(of: container.spoofAudioOtherPlaying) { _ in saveSpoofProfile() }
+                            featureToggle("Override Channel Counts", "audio.channels")
+                            Stepper("Output Channels: \(container.spoofAudioOutputChannels)", value: $container.spoofAudioOutputChannels, in: 0...32)
+                            Stepper("Input Channels: \(container.spoofAudioInputChannels)", value: $container.spoofAudioInputChannels, in: 0...32)
                             Button("Save Audio") { saveSpoofProfile() }
                         }
                         .disabled(!container.spoofAudioCategoryEnabled)
 
                         DisclosureGroup("Graphics & Metal") {
+                            featureToggle("Override GPU Name", "graphics.name")
                             TextField("GPU Name", text: $container.spoofGPUName)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
-                            Text("Metal device name and capability queries use the protected graphics profile.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            featureToggle("Override Recommended Working Set", "graphics.workingSet")
+                            TextField("Working Set (Bytes)", value: $container.spoofGPUWorkingSetSize, format: .number)
+                                .keyboardType(.numberPad)
+                            featureToggle("Report Ray Tracing Support", "graphics.rayTracing")
+                            Toggle("Ray Tracing Result", isOn: $container.spoofGraphicsSupportsRayTracing)
+                                .onChange(of: container.spoofGraphicsSupportsRayTracing) { _ in saveSpoofProfile() }
+                            featureToggle("Report All Metal Families", "graphics.allFamilies")
+                            Toggle("Metal Families Result", isOn: $container.spoofGraphicsSupportsAllFamilies)
+                                .onChange(of: container.spoofGraphicsSupportsAllFamilies) { _ in saveSpoofProfile() }
                             Button("Save Graphics") { saveSpoofProfile() }
                         }
                         .disabled(!container.spoofGraphicsCategoryEnabled)
 
                         DisclosureGroup("WebView Fingerprint") {
-                            Text("Platform, OS version, language, time zone, CPU count, memory, screen metrics, canvas, and WebGL values follow this profile.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            categoryToggle("Inject protected WebView profile", isOn: $container.spoofWebViewCategoryEnabled)
+                            featureToggle("Override Navigator and User-Agent", "web.navigator")
+                            featureToggle("Override Screen and Device Pixel Ratio", "web.screen")
+                            featureToggle("Override Time Zone", "web.timeZone")
+                            featureToggle("Override WebGL", "web.webGL")
+                            TextField("WebGL Vendor", text: $container.spoofWebGLVendor)
+                            TextField("WebGL Renderer", text: $container.spoofWebGLRenderer)
+                            featureToggle("Override Canvas Output", "web.canvas")
+                            TextField("Canvas Data URL", text: $container.spoofWebCanvasDataURL)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            Stepper("Color Depth: \(container.spoofWebColorDepth)", value: $container.spoofWebColorDepth, in: 1...64)
+                            Button("Save WebView") { saveSpoofProfile() }
                         }
+                        .disabled(!container.spoofWebViewCategoryEnabled)
 
                         DisclosureGroup("App, Account & Pasteboard") {
-                            Text("Hides installed-app enumeration and iCloud identity, and gives the guest an isolated general pasteboard.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            categoryToggle("Protect app/account/pasteboard data", isOn: $container.spoofAppPrivacyCategoryEnabled)
+                            featureToggle("Hide URL-Scheme App Detection", "app.canOpenURL")
+                            featureToggle("Hide Installed Font Families", "app.fonts")
+                            featureToggle("Hide Installed Speech Voices", "app.voices")
+                            featureToggle("Hide iCloud Account Identity", "app.iCloud")
+                            featureToggle("Use Isolated General Pasteboard", "app.pasteboard")
                         }
+                        .disabled(!container.spoofAppPrivacyCategoryEnabled)
 
                         DisclosureGroup("Sensors & Personal Data") {
-                            Text("Reports motion, location, contacts, calendars, reminders, media, and photo access as unavailable or denied without fabricating personal records.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            categoryToggle("Protect sensors and personal data", isOn: $container.spoofSensorsAndUserDataCategoryEnabled)
+                            DisclosureGroup("Sensors Reported Unavailable") {
+                                featureToggle("Accelerometer", "sensors.accelerometer")
+                                featureToggle("Gyroscope", "sensors.gyroscope")
+                                featureToggle("Magnetometer", "sensors.magnetometer")
+                                featureToggle("Device Motion", "sensors.deviceMotion")
+                                featureToggle("Pedometer Capabilities", "sensors.pedometer")
+                                featureToggle("Altimeter Capabilities", "sensors.altimeter")
+                            }
+                            DisclosureGroup("Permissions Reported Denied") {
+                                featureToggle("Location", "permissions.location")
+                                featureToggle("Camera and Microphone", "permissions.capture")
+                                featureToggle("Photos", "permissions.photos")
+                                featureToggle("Contacts", "permissions.contacts")
+                                featureToggle("Calendars and Reminders", "permissions.events")
+                                featureToggle("Media Library", "permissions.media")
+                                featureToggle("Bluetooth", "permissions.bluetooth")
+                            }
                         }
+                        .disabled(!container.spoofSensorsAndUserDataCategoryEnabled)
                         }
                         .disabled(container.blockDeviceInfoReads)
                     }
@@ -902,7 +999,12 @@ struct LCContainerView : View {
         let extendedValuesValid = (!container.spoofStorageCategoryEnabled || (
               container.spoofStorageTotalCapacity > 0 && container.spoofStorageAvailableCapacity >= 0 &&
               container.spoofStorageAvailableCapacity <= container.spoofStorageTotalCapacity)) &&
-            (!container.spoofAudioCategoryEnabled || (0...1).contains(container.spoofAudioOutputVolume))
+            (!container.spoofAudioCategoryEnabled || (
+              (0...1).contains(container.spoofAudioOutputVolume) && container.spoofAudioSampleRate > 0 &&
+              container.spoofAudioOutputLatency >= 0 && container.spoofAudioInputLatency >= 0 &&
+              container.spoofAudioOutputChannels >= 0 && container.spoofAudioInputChannels >= 0)) &&
+            (!container.spoofGraphicsCategoryEnabled || container.spoofGPUWorkingSetSize > 0) &&
+            (!container.spoofWebViewCategoryEnabled || (1...64).contains(container.spoofWebColorDepth))
         guard systemValuesValid && thermalValueValid && displayValuesValid && extendedValuesValid else {
             errorInfo = "Profile values are invalid. Capacities must be consistent, volume/brightness must be between 0 and 1, and enabled names cannot be empty."
             errorShow = true
@@ -990,8 +1092,18 @@ struct LCContainerView : View {
             container.spoofStorageTotalCapacity = Int64(values.volumeTotalCapacity ?? Int(container.spoofStorageTotalCapacity))
             container.spoofStorageAvailableCapacity = Int64(values.volumeAvailableCapacity ?? Int(container.spoofStorageAvailableCapacity))
         }
-        container.spoofGPUName = MTLCreateSystemDefaultDevice()?.name ?? "Apple GPU"
-        container.spoofAudioOutputVolume = Double(AVAudioSession.sharedInstance().outputVolume)
+        if let gpu = MTLCreateSystemDefaultDevice() {
+            container.spoofGPUName = gpu.name
+            container.spoofGPUWorkingSetSize = Int64(gpu.recommendedMaxWorkingSetSize)
+        }
+        let audio = AVAudioSession.sharedInstance()
+        container.spoofAudioOutputVolume = Double(audio.outputVolume)
+        container.spoofAudioSampleRate = audio.sampleRate
+        container.spoofAudioOutputLatency = audio.outputLatency
+        container.spoofAudioInputLatency = audio.inputLatency
+        container.spoofAudioOtherPlaying = audio.isOtherAudioPlaying
+        container.spoofAudioOutputChannels = audio.outputNumberOfChannels
+        container.spoofAudioInputChannels = audio.inputNumberOfChannels
     }
 
     func applyRandomDeviceProfileValues() {
@@ -1091,7 +1203,14 @@ struct LCContainerView : View {
         let maximumFreeGB = Int64(max(8, storageGB - 8))
         container.spoofStorageAvailableCapacity = Int64.random(in: 8...maximumFreeGB) * 1_073_741_824
         container.spoofGPUName = "Apple GPU"
+        container.spoofGPUWorkingSetSize = Int64(([2, 3, 4, 6].randomElement() ?? 4) * 1_073_741_824)
         container.spoofAudioOutputVolume = Double.random(in: 0.1...0.9)
+        container.spoofAudioSampleRate = [44_100.0, 48_000.0, 96_000.0].randomElement() ?? 48_000
+        container.spoofAudioOutputLatency = Double.random(in: 0.005...0.03)
+        container.spoofAudioInputLatency = Double.random(in: 0.005...0.03)
+        container.spoofAudioOtherPlaying = Bool.random()
+        container.spoofAudioOutputChannels = [1, 2].randomElement() ?? 2
+        container.spoofAudioInputChannels = [0, 1, 2].randomElement() ?? 1
     }
 
     private func parsedRotationOSMajors() -> [Int]? {

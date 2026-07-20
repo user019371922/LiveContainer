@@ -90,6 +90,30 @@ long long spoofStorageTotalCapacity = 128LL * 1024LL * 1024LL * 1024LL;
 long long spoofStorageAvailableCapacity = 64LL * 1024LL * 1024LL * 1024LL;
 NSString *spoofGPUName = @"Apple GPU";
 float spoofAudioOutputVolume = 0.5f;
+double spoofAudioSampleRate = 48000;
+double spoofAudioOutputLatency = 0.01;
+double spoofAudioInputLatency = 0.01;
+BOOL spoofAudioOtherPlaying = NO;
+NSInteger spoofAudioOutputChannels = 2;
+NSInteger spoofAudioInputChannels = 1;
+unsigned long long spoofGPUWorkingSetSize = 4ULL * 1024ULL * 1024ULL * 1024ULL;
+BOOL spoofGraphicsSupportsRayTracing = YES;
+BOOL spoofGraphicsSupportsAllFamilies = YES;
+NSString *spoofStorageVolumeName = @"Data";
+NSString *spoofStorageVolumeUUID = @"00000000-0000-0000-0000-000000000000";
+time_t spoofStorageFileCreationTime = 1735689600;
+time_t spoofStorageVolumeCreationTime = 1704067200;
+NSString *spoofCustomUserAgent = nil;
+NSString *spoofWebGLVendor = @"Apple Inc.";
+NSString *spoofWebGLRenderer = @"Apple GPU";
+NSString *spoofWebCanvasDataURL = @"data:image/png;base64,iVBORw0KGgo=";
+NSInteger spoofWebColorDepth = 24;
+NSDictionary<NSString *, NSNumber *> *spoofFeatureOverrides = nil;
+
+static BOOL LCFeatureEnabled(NSString *key) {
+    NSNumber *value = spoofFeatureOverrides[key];
+    return [value isKindOfClass:NSNumber.class] ? value.boolValue : YES;
+}
 
 @interface LCTelephonyNetworkInfoHookProvider : NSObject
 @end
@@ -168,21 +192,30 @@ static void LCSwizzleClassIfPresentWithSourceClass(Class cls, Class sourceCls, S
     }
 }
 
-static BOOL LCNeutralAccessibilityFlag(id self, SEL _cmd) {
-    return NO;
-}
+static BOOL LCNeutralAccessibilityFlag(id self, SEL _cmd) { return NO; }
 
 static id LCEmptyArrayGetter(id self, SEL _cmd) { return @[]; }
 static NSString *LCNeutralStringGetter(id self, SEL _cmd) { return spoofGPUName ?: @"Apple GPU"; }
-static BOOL LCTrueGetter(id self, SEL _cmd) { return YES; }
-static BOOL LCTrueIntegerArgumentGetter(id self, SEL _cmd, NSInteger value) { return YES; }
+static BOOL LCConfiguredBoolGetter(id self, SEL _cmd) {
+    if(sel_isEqual(_cmd, NSSelectorFromString(@"isOtherAudioPlaying"))) return spoofAudioOtherPlaying;
+    return spoofGraphicsSupportsRayTracing;
+}
+static BOOL LCTrueIntegerArgumentGetter(id self, SEL _cmd, NSInteger value) { return spoofGraphicsSupportsAllFamilies; }
 static NSInteger LCDeniedAuthorizationGetter(id self, SEL _cmd) { return 2; }
+static NSInteger LCDeniedMediaAuthorizationGetter(id self, SEL _cmd) { return 1; }
 static NSInteger LCDeniedAuthorizationArgumentGetter(id self, SEL _cmd, NSInteger value) { return 2; }
-static double LCNeutralDoubleGetter(id self, SEL _cmd) { return 0.01; }
+static double LCAudioDoubleGetter(id self, SEL _cmd) {
+    if(sel_isEqual(_cmd, NSSelectorFromString(@"sampleRate"))) return spoofAudioSampleRate;
+    if(sel_isEqual(_cmd, NSSelectorFromString(@"outputLatency"))) return spoofAudioOutputLatency;
+    return spoofAudioInputLatency;
+}
 static float LCNeutralFloatGetter(id self, SEL _cmd) { return spoofAudioOutputVolume; }
-static NSInteger LCNeutralChannelCountGetter(id self, SEL _cmd) { return 2; }
+static NSInteger LCConfiguredChannelCountGetter(id self, SEL _cmd) {
+    return sel_isEqual(_cmd, NSSelectorFromString(@"outputNumberOfChannels"))
+        ? spoofAudioOutputChannels : spoofAudioInputChannels;
+}
 static unsigned long long LCNeutralWorkingSetGetter(id self, SEL _cmd) {
-    return spoofPhysicalMemory > 0 ? spoofPhysicalMemory / 2 : 4ULL * 1024ULL * 1024ULL * 1024ULL;
+    return spoofGPUWorkingSetSize;
 }
 
 static void LCReplaceInstanceMethod(Class cls, NSString *selectorName, IMP implementation) {
@@ -197,38 +230,46 @@ static void LCReplaceClassMethod(Class cls, NSString *selectorName, IMP implemen
 
 static void LCInstallNeutralAccessibilityProfile(void) {
     Class cls = NSClassFromString(@"UIAccessibility");
-    NSArray<NSString *> *selectors = @[
-        @"isVoiceOverRunning", @"isSwitchControlRunning", @"isGuidedAccessEnabled",
-        @"isGrayscaleEnabled", @"isInvertColorsEnabled", @"isReduceMotionEnabled",
-        @"isAssistiveTouchRunning", @"isShakeToUndoEnabled", @"isBoldTextEnabled",
-        @"isDarkerSystemColorsEnabled", @"isReduceTransparencyEnabled", @"isMonoAudioEnabled",
-        @"isSpeakScreenEnabled", @"isSpeakSelectionEnabled", @"isClosedCaptioningEnabled",
-        @"isVideoAutoplayEnabled", @"shouldDifferentiateWithoutColor",
-        @"isOnOffSwitchLabelsEnabled"
-    ];
-    for(NSString *selectorName in selectors) {
+    NSDictionary<NSString *, NSString *> *features = @{
+        @"isVoiceOverRunning": @"accessibility.voiceOver", @"isSwitchControlRunning": @"accessibility.switchControl",
+        @"isGuidedAccessEnabled": @"accessibility.guidedAccess", @"isGrayscaleEnabled": @"accessibility.grayscale",
+        @"isInvertColorsEnabled": @"accessibility.invertColors", @"isReduceMotionEnabled": @"accessibility.reduceMotion",
+        @"isAssistiveTouchRunning": @"accessibility.assistiveTouch", @"isShakeToUndoEnabled": @"accessibility.shakeToUndo",
+        @"isBoldTextEnabled": @"accessibility.boldText", @"isDarkerSystemColorsEnabled": @"accessibility.darkerColors",
+        @"isReduceTransparencyEnabled": @"accessibility.reduceTransparency", @"isMonoAudioEnabled": @"accessibility.monoAudio",
+        @"isSpeakScreenEnabled": @"accessibility.speakScreen", @"isSpeakSelectionEnabled": @"accessibility.speakSelection",
+        @"isClosedCaptioningEnabled": @"accessibility.closedCaptions", @"isVideoAutoplayEnabled": @"accessibility.videoAutoplay",
+        @"shouldDifferentiateWithoutColor": @"accessibility.differentiateWithoutColor",
+        @"isOnOffSwitchLabelsEnabled": @"accessibility.onOffLabels"
+    };
+    for(NSString *selectorName in features) {
+        if(!LCFeatureEnabled(features[selectorName])) continue;
         Method method = class_getClassMethod(cls, NSSelectorFromString(selectorName));
         if(method) method_setImplementation(method, (IMP)LCNeutralAccessibilityFlag);
     }
 }
 
 static void LCInstallLocalePrivacyProfile(void) {
-    LCReplaceClassMethod(UITextInputMode.class, @"activeInputModes", (IMP)LCEmptyArrayGetter);
+    if(LCFeatureEnabled(@"locale.inputModes")) {
+        LCReplaceClassMethod(UITextInputMode.class, @"activeInputModes", (IMP)LCEmptyArrayGetter);
+    }
 }
 
 static void LCInstallAudioPrivacyProfile(void) {
     AVAudioSession *session = AVAudioSession.sharedInstance;
     Class sessionClass = object_getClass(session) ? [session class] : AVAudioSession.class;
-    LCReplaceInstanceMethod(sessionClass, @"availableInputs", (IMP)LCEmptyArrayGetter);
-    LCReplaceInstanceMethod(sessionClass, @"sampleRate", (IMP)LCNeutralDoubleGetter);
-    LCReplaceInstanceMethod(sessionClass, @"outputLatency", (IMP)LCNeutralDoubleGetter);
-    LCReplaceInstanceMethod(sessionClass, @"inputLatency", (IMP)LCNeutralDoubleGetter);
-    LCReplaceInstanceMethod(sessionClass, @"isOtherAudioPlaying", (IMP)LCNeutralAccessibilityFlag);
-    LCReplaceInstanceMethod(sessionClass, @"outputVolume", (IMP)LCNeutralFloatGetter);
-    LCReplaceInstanceMethod(sessionClass, @"outputNumberOfChannels", (IMP)LCNeutralChannelCountGetter);
-    LCReplaceInstanceMethod(sessionClass, @"inputNumberOfChannels", (IMP)LCNeutralChannelCountGetter);
+    if(LCFeatureEnabled(@"audio.availableInputs")) LCReplaceInstanceMethod(sessionClass, @"availableInputs", (IMP)LCEmptyArrayGetter);
+    if(LCFeatureEnabled(@"audio.sampleRate")) LCReplaceInstanceMethod(sessionClass, @"sampleRate", (IMP)LCAudioDoubleGetter);
+    if(LCFeatureEnabled(@"audio.outputLatency")) LCReplaceInstanceMethod(sessionClass, @"outputLatency", (IMP)LCAudioDoubleGetter);
+    if(LCFeatureEnabled(@"audio.inputLatency")) LCReplaceInstanceMethod(sessionClass, @"inputLatency", (IMP)LCAudioDoubleGetter);
+    if(LCFeatureEnabled(@"audio.otherPlaying")) LCReplaceInstanceMethod(sessionClass, @"isOtherAudioPlaying", (IMP)LCConfiguredBoolGetter);
+    if(LCFeatureEnabled(@"audio.outputVolume")) LCReplaceInstanceMethod(sessionClass, @"outputVolume", (IMP)LCNeutralFloatGetter);
+    if(LCFeatureEnabled(@"audio.channels")) {
+        LCReplaceInstanceMethod(sessionClass, @"outputNumberOfChannels", (IMP)LCConfiguredChannelCountGetter);
+        LCReplaceInstanceMethod(sessionClass, @"inputNumberOfChannels", (IMP)LCConfiguredChannelCountGetter);
+    }
     id route = session.currentRoute;
-    if(route) {
+    if(route && LCFeatureEnabled(@"audio.routes")) {
         LCReplaceInstanceMethod([route class], @"outputs", (IMP)LCEmptyArrayGetter);
         LCReplaceInstanceMethod([route class], @"inputs", (IMP)LCEmptyArrayGetter);
     }
@@ -238,38 +279,43 @@ static void LCInstallGraphicsPrivacyProfile(void) {
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     if(!device) return;
     Class cls = [device class];
-    LCReplaceInstanceMethod(cls, @"name", (IMP)LCNeutralStringGetter);
-    LCReplaceInstanceMethod(cls, @"recommendedMaxWorkingSetSize", (IMP)LCNeutralWorkingSetGetter);
-    LCReplaceInstanceMethod(cls, @"supportsRaytracing", (IMP)LCTrueGetter);
-    LCReplaceInstanceMethod(cls, @"supportsFamily:", (IMP)LCTrueIntegerArgumentGetter);
+    if(LCFeatureEnabled(@"graphics.name")) LCReplaceInstanceMethod(cls, @"name", (IMP)LCNeutralStringGetter);
+    if(LCFeatureEnabled(@"graphics.workingSet")) LCReplaceInstanceMethod(cls, @"recommendedMaxWorkingSetSize", (IMP)LCNeutralWorkingSetGetter);
+    if(LCFeatureEnabled(@"graphics.rayTracing")) LCReplaceInstanceMethod(cls, @"supportsRaytracing", (IMP)LCConfiguredBoolGetter);
+    if(LCFeatureEnabled(@"graphics.allFamilies")) LCReplaceInstanceMethod(cls, @"supportsFamily:", (IMP)LCTrueIntegerArgumentGetter);
 }
 
 static void LCInstallAppEnumerationPrivacyProfile(void) {
-    LCReplaceClassMethod(UIFont.class, @"familyNames", (IMP)LCEmptyArrayGetter);
-    LCReplaceClassMethod(AVSpeechSynthesisVoice.class, @"speechVoices", (IMP)LCEmptyArrayGetter);
+    if(LCFeatureEnabled(@"app.fonts")) LCReplaceClassMethod(UIFont.class, @"familyNames", (IMP)LCEmptyArrayGetter);
+    if(LCFeatureEnabled(@"app.voices")) LCReplaceClassMethod(AVSpeechSynthesisVoice.class, @"speechVoices", (IMP)LCEmptyArrayGetter);
 }
 
 static void LCInstallSensorsAndUserDataPrivacyProfile(void) {
     Class motionManager = NSClassFromString(@"CMMotionManager");
-    for(NSString *selector in @[@"isAccelerometerAvailable", @"isGyroAvailable", @"isMagnetometerAvailable", @"isDeviceMotionAvailable"]) {
-        LCReplaceInstanceMethod(motionManager, selector, (IMP)LCNeutralAccessibilityFlag);
-    }
+    if(LCFeatureEnabled(@"sensors.accelerometer")) LCReplaceInstanceMethod(motionManager, @"isAccelerometerAvailable", (IMP)LCNeutralAccessibilityFlag);
+    if(LCFeatureEnabled(@"sensors.gyroscope")) LCReplaceInstanceMethod(motionManager, @"isGyroAvailable", (IMP)LCNeutralAccessibilityFlag);
+    if(LCFeatureEnabled(@"sensors.magnetometer")) LCReplaceInstanceMethod(motionManager, @"isMagnetometerAvailable", (IMP)LCNeutralAccessibilityFlag);
+    if(LCFeatureEnabled(@"sensors.deviceMotion")) LCReplaceInstanceMethod(motionManager, @"isDeviceMotionAvailable", (IMP)LCNeutralAccessibilityFlag);
     Class pedometer = NSClassFromString(@"CMPedometer");
-    for(NSString *selector in @[@"isStepCountingAvailable", @"isDistanceAvailable", @"isFloorCountingAvailable", @"isPaceAvailable", @"isCadenceAvailable", @"isPedometerEventTrackingAvailable"]) {
-        LCReplaceClassMethod(pedometer, selector, (IMP)LCNeutralAccessibilityFlag);
+    if(LCFeatureEnabled(@"sensors.pedometer")) {
+        for(NSString *selector in @[@"isStepCountingAvailable", @"isDistanceAvailable", @"isFloorCountingAvailable", @"isPaceAvailable", @"isCadenceAvailable", @"isPedometerEventTrackingAvailable"]) {
+            LCReplaceClassMethod(pedometer, selector, (IMP)LCNeutralAccessibilityFlag);
+        }
     }
     Class altimeter = NSClassFromString(@"CMAltimeter");
-    LCReplaceClassMethod(altimeter, @"isRelativeAltitudeAvailable", (IMP)LCNeutralAccessibilityFlag);
-    LCReplaceClassMethod(altimeter, @"isAbsoluteAltitudeAvailable", (IMP)LCNeutralAccessibilityFlag);
+    if(LCFeatureEnabled(@"sensors.altimeter")) {
+        LCReplaceClassMethod(altimeter, @"isRelativeAltitudeAvailable", (IMP)LCNeutralAccessibilityFlag);
+        LCReplaceClassMethod(altimeter, @"isAbsoluteAltitudeAvailable", (IMP)LCNeutralAccessibilityFlag);
+    }
 
     Class location = NSClassFromString(@"CLLocationManager");
-    LCReplaceInstanceMethod(location, @"authorizationStatus", (IMP)LCDeniedAuthorizationGetter);
-    LCReplaceClassMethod(NSClassFromString(@"AVCaptureDevice"), @"authorizationStatusForMediaType:", (IMP)LCDeniedAuthorizationArgumentGetter);
-    LCReplaceClassMethod(NSClassFromString(@"PHPhotoLibrary"), @"authorizationStatusForAccessLevel:", (IMP)LCDeniedAuthorizationArgumentGetter);
-    LCReplaceClassMethod(NSClassFromString(@"CNContactStore"), @"authorizationStatusForEntityType:", (IMP)LCDeniedAuthorizationArgumentGetter);
-    LCReplaceClassMethod(NSClassFromString(@"EKEventStore"), @"authorizationStatusForEntityType:", (IMP)LCDeniedAuthorizationArgumentGetter);
-    LCReplaceClassMethod(NSClassFromString(@"MPMediaLibrary"), @"authorizationStatus", (IMP)LCDeniedAuthorizationGetter);
-    LCReplaceClassMethod(NSClassFromString(@"CBCentralManager"), @"authorization", (IMP)LCDeniedAuthorizationGetter);
+    if(LCFeatureEnabled(@"permissions.location")) LCReplaceInstanceMethod(location, @"authorizationStatus", (IMP)LCDeniedAuthorizationGetter);
+    if(LCFeatureEnabled(@"permissions.capture")) LCReplaceClassMethod(NSClassFromString(@"AVCaptureDevice"), @"authorizationStatusForMediaType:", (IMP)LCDeniedAuthorizationArgumentGetter);
+    if(LCFeatureEnabled(@"permissions.photos")) LCReplaceClassMethod(NSClassFromString(@"PHPhotoLibrary"), @"authorizationStatusForAccessLevel:", (IMP)LCDeniedAuthorizationArgumentGetter);
+    if(LCFeatureEnabled(@"permissions.contacts")) LCReplaceClassMethod(NSClassFromString(@"CNContactStore"), @"authorizationStatusForEntityType:", (IMP)LCDeniedAuthorizationArgumentGetter);
+    if(LCFeatureEnabled(@"permissions.events")) LCReplaceClassMethod(NSClassFromString(@"EKEventStore"), @"authorizationStatusForEntityType:", (IMP)LCDeniedAuthorizationArgumentGetter);
+    if(LCFeatureEnabled(@"permissions.media")) LCReplaceClassMethod(NSClassFromString(@"MPMediaLibrary"), @"authorizationStatus", (IMP)LCDeniedMediaAuthorizationGetter);
+    if(LCFeatureEnabled(@"permissions.bluetooth")) LCReplaceClassMethod(NSClassFromString(@"CBCentralManager"), @"authorization", (IMP)LCDeniedAuthorizationGetter);
 }
 
 static NSString *LCJSONString(id value) {
@@ -286,26 +332,35 @@ static NSString *LCWebViewProfileScript(void) {
         ? [spoofLocale.localeIdentifier stringByReplacingOccurrencesOfString:@"_" withString:@"-"] : @"en-US";
     NSString *ua = [NSString stringWithFormat:@"Mozilla/5.0 (%@; CPU %@ OS %@ like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
         platform, [platform isEqualToString:@"iPad"] ? @"iPad" : @"iPhone", version];
+    if(spoofCustomUserAgent.length > 0) ua = spoofCustomUserAgent;
     NSInteger cores = spoofProcessorCount > 0 ? spoofProcessorCount : 6;
     unsigned long long memoryGB = spoofPhysicalMemory > 0 ? MAX(2, spoofPhysicalMemory / (1024ULL * 1024ULL * 1024ULL)) : 8;
     CGFloat pointsWidth = spoofScreenScale > 0 ? spoofScreenWidth / spoofScreenScale : spoofScreenWidth;
     CGFloat pointsHeight = spoofScreenScale > 0 ? spoofScreenHeight / spoofScreenScale : spoofScreenHeight;
     NSInteger timezoneOffset = spoofTimeZone ? -[spoofTimeZone secondsFromGMT] / 60 : 0;
-    return [NSString stringWithFormat:
-        @"(()=>{const d=(o,k,v)=>{try{Object.defineProperty(o,k,{get:()=>v,configurable:true})}catch(e){}};"
-         "d(Navigator.prototype,'userAgent',%@);d(Navigator.prototype,'platform',%@);"
-         "d(Navigator.prototype,'language',%@);d(Navigator.prototype,'languages',[%@]);"
-         "d(Navigator.prototype,'hardwareConcurrency',%ld);d(Navigator.prototype,'deviceMemory',%llu);"
-         "d(Screen.prototype,'width',%.0f);d(Screen.prototype,'height',%.0f);d(Screen.prototype,'colorDepth',24);d(Screen.prototype,'pixelDepth',24);"
-         "d(window,'devicePixelRatio',%.3f);Date.prototype.getTimezoneOffset=function(){return %ld};"
-         "const ir=Intl.DateTimeFormat.prototype.resolvedOptions;Intl.DateTimeFormat.prototype.resolvedOptions=function(){const r=ir.call(this);r.timeZone=%@;return r};"
-         "const gp=typeof WebGLRenderingContext!=='undefined'&&WebGLRenderingContext.prototype.getParameter;if(gp)WebGLRenderingContext.prototype.getParameter=function(p){if(p===37445)return 'Apple Inc.';if(p===37446)return 'Apple GPU';return gp.call(this,p)};"
-         "const td=typeof HTMLCanvasElement!=='undefined'&&HTMLCanvasElement.prototype.toDataURL;if(td)HTMLCanvasElement.prototype.toDataURL=function(){return 'data:image/png;base64,iVBORw0KGgo='};"
-         "})();",
-        LCJSONString(ua), LCJSONString(platform), LCJSONString(language), LCJSONString(language),
-        (long)cores, memoryGB, pointsWidth > 0 ? pointsWidth : 393, pointsHeight > 0 ? pointsHeight : 852,
-        spoofScreenScale > 0 ? spoofScreenScale : 3, (long)timezoneOffset,
-        LCJSONString(spoofTimeZone.name ?: @"Etc/UTC")];
+    NSMutableString *script = [@"(()=>{const d=(o,k,v)=>{try{Object.defineProperty(o,k,{get:()=>v,configurable:true})}catch(e){}};" mutableCopy];
+    if(LCFeatureEnabled(@"web.navigator")) {
+        [script appendFormat:@"d(Navigator.prototype,'userAgent',%@);d(Navigator.prototype,'platform',%@);d(Navigator.prototype,'language',%@);d(Navigator.prototype,'languages',[%@]);d(Navigator.prototype,'hardwareConcurrency',%ld);d(Navigator.prototype,'deviceMemory',%llu);",
+            LCJSONString(ua), LCJSONString(platform), LCJSONString(language), LCJSONString(language), (long)cores, memoryGB];
+    }
+    if(LCFeatureEnabled(@"web.screen")) {
+        [script appendFormat:@"d(Screen.prototype,'width',%.0f);d(Screen.prototype,'height',%.0f);d(Screen.prototype,'colorDepth',%ld);d(Screen.prototype,'pixelDepth',%ld);d(window,'devicePixelRatio',%.3f);",
+            pointsWidth > 0 ? pointsWidth : 393, pointsHeight > 0 ? pointsHeight : 852,
+            (long)spoofWebColorDepth, (long)spoofWebColorDepth, spoofScreenScale > 0 ? spoofScreenScale : 3];
+    }
+    if(LCFeatureEnabled(@"web.timeZone")) {
+        [script appendFormat:@"Date.prototype.getTimezoneOffset=function(){return %ld};const ir=Intl.DateTimeFormat.prototype.resolvedOptions;Intl.DateTimeFormat.prototype.resolvedOptions=function(){const r=ir.call(this);r.timeZone=%@;return r};",
+            (long)timezoneOffset, LCJSONString(spoofTimeZone.name ?: @"Etc/UTC")];
+    }
+    if(LCFeatureEnabled(@"web.webGL")) {
+        [script appendFormat:@"const gp=typeof WebGLRenderingContext!=='undefined'&&WebGLRenderingContext.prototype.getParameter;if(gp)WebGLRenderingContext.prototype.getParameter=function(p){if(p===37445)return %@;if(p===37446)return %@;return gp.call(this,p)};",
+            LCJSONString(spoofWebGLVendor), LCJSONString(spoofWebGLRenderer)];
+    }
+    if(LCFeatureEnabled(@"web.canvas")) {
+        [script appendFormat:@"const td=typeof HTMLCanvasElement!=='undefined'&&HTMLCanvasElement.prototype.toDataURL;if(td)HTMLCanvasElement.prototype.toDataURL=function(){return %@};", LCJSONString(spoofWebCanvasDataURL)];
+    }
+    [script appendString:@"})();"];
+    return script;
 }
 
 static BOOL LCParseVersionPart(NSString *part, NSInteger *outValue) {
@@ -522,7 +577,7 @@ static int hook_uname(struct utsname *uts) {
 }
 
 static int hook_gethostname(char *name, size_t namelen) {
-    if((blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled)) && namelen > 0) {
+    if((blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled && LCFeatureEnabled(@"network.hostName"))) && namelen > 0) {
         NSString *value = spoofHostName.length > 0 ? spoofHostName : @"localhost";
         strlcpy(name, value.UTF8String, namelen);
         return 0;
@@ -531,48 +586,48 @@ static int hook_gethostname(char *name, size_t namelen) {
 }
 
 static int hook_getifaddrs(struct ifaddrs **ifap) {
-    if(blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled)) {
+    if(blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled && LCFeatureEnabled(@"network.interfaces"))) {
         if(ifap) *ifap = NULL;
         return 0;
     }
     return getifaddrs(ifap);
 }
 
-#define LC_ACCESSIBILITY_HOOK(_name) \
+#define LC_ACCESSIBILITY_HOOK(_name, _key) \
     static BOOL hook_##_name(void) { \
-        if(blockDeviceInfoReads || (spoofProfileEnabled && spoofAccessibilityCategoryEnabled)) return NO; \
+        if(blockDeviceInfoReads || (spoofProfileEnabled && spoofAccessibilityCategoryEnabled && LCFeatureEnabled(_key))) return NO; \
         return _name(); \
     }
 
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsVoiceOverRunning)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsMonoAudioEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsClosedCaptioningEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsInvertColorsEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsGuidedAccessEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsBoldTextEnabled)
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsVoiceOverRunning, @"accessibility.voiceOver")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsMonoAudioEnabled, @"accessibility.monoAudio")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsClosedCaptioningEnabled, @"accessibility.closedCaptions")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsInvertColorsEnabled, @"accessibility.invertColors")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsGuidedAccessEnabled, @"accessibility.guidedAccess")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsBoldTextEnabled, @"accessibility.boldText")
 #if __IPHONE_OS_VERSION_MIN_REQUIRED >= 260100
-LC_ACCESSIBILITY_HOOK(AXShowBordersEnabled)
+LC_ACCESSIBILITY_HOOK(AXShowBordersEnabled, @"accessibility.buttonShapes")
 #endif
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsGrayscaleEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsReduceTransparencyEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsReduceMotionEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsVideoAutoplayEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityDarkerSystemColorsEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsSwitchControlRunning)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsSpeakSelectionEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsSpeakScreenEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsShakeToUndoEnabled)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsAssistiveTouchRunning)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityShouldDifferentiateWithoutColor)
-LC_ACCESSIBILITY_HOOK(UIAccessibilityIsOnOffSwitchLabelsEnabled)
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsGrayscaleEnabled, @"accessibility.grayscale")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsReduceTransparencyEnabled, @"accessibility.reduceTransparency")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsReduceMotionEnabled, @"accessibility.reduceMotion")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsVideoAutoplayEnabled, @"accessibility.videoAutoplay")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityDarkerSystemColorsEnabled, @"accessibility.darkerColors")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsSwitchControlRunning, @"accessibility.switchControl")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsSpeakSelectionEnabled, @"accessibility.speakSelection")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsSpeakScreenEnabled, @"accessibility.speakScreen")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsShakeToUndoEnabled, @"accessibility.shakeToUndo")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsAssistiveTouchRunning, @"accessibility.assistiveTouch")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityShouldDifferentiateWithoutColor, @"accessibility.differentiateWithoutColor")
+LC_ACCESSIBILITY_HOOK(UIAccessibilityIsOnOffSwitchLabelsEnabled, @"accessibility.onOffLabels")
 
 static void hook_nw_path_monitor_start(nw_path_monitor_t monitor) {
-    if(blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled)) return;
+    if(blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled && LCFeatureEnabled(@"network.pathMonitor"))) return;
     nw_path_monitor_start(monitor);
 }
 
 static void hook_nw_browser_start(nw_browser_t browser) {
-    if(blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled)) return;
+    if(blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled && LCFeatureEnabled(@"network.serviceDiscovery"))) return;
     nw_browser_start(browser);
 }
 
@@ -585,7 +640,7 @@ static DNSServiceErrorType hook_DNSServiceBrowse(
     DNSServiceBrowseReply callback,
     void *context
 ) {
-    if(blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled)) {
+    if(blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled && LCFeatureEnabled(@"network.serviceDiscovery"))) {
         if(sdRef) *sdRef = NULL;
         return kDNSServiceErr_PolicyDenied;
     }
@@ -593,7 +648,7 @@ static DNSServiceErrorType hook_DNSServiceBrowse(
 }
 
 static CFDictionaryRef hook_CFNetworkCopySystemProxySettings(void) {
-    if(blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled)) {
+    if(blockDeviceInfoReads || (spoofProfileEnabled && spoofNetworkEnvironmentCategoryEnabled && LCFeatureEnabled(@"network.proxy"))) {
         return CFDictionaryCreate(kCFAllocatorDefault, NULL, NULL, 0,
             &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     }
@@ -696,6 +751,8 @@ static void LCInitUserAgentRegexes(void) {
 
 static NSString* LCRewriteUserAgent(NSString *ua) {
     if(!ua || ua.length == 0) return ua;
+    if(!LCFeatureEnabled(@"networkHeaders.userAgent")) return ua;
+    if(spoofCustomUserAgent.length > 0) return spoofCustomUserAgent;
 
     NSMutableString *result = [ua mutableCopy];
     NSRange fullRange = NSMakeRange(0, result.length);
@@ -926,7 +983,28 @@ static void LCRotateSpoofProfile(void) {
         double fraction = (double)arc4random_uniform(10001) / 10000.0;
         spoofStorageAvailableCapacity = minimumFree + (long long)(fraction * (double)variableRange);
     }
-    if(spoofAudioCategoryEnabled) spoofAudioOutputVolume = (float)arc4random_uniform(101) / 100.0f;
+    if(spoofAudioCategoryEnabled) {
+        if(LCFeatureEnabled(@"audio.outputVolume")) spoofAudioOutputVolume = (float)arc4random_uniform(101) / 100.0f;
+        if(LCFeatureEnabled(@"audio.sampleRate")) {
+            NSArray<NSNumber *> *sampleRates = @[@44100, @48000, @96000];
+            spoofAudioSampleRate = [LCRandomArrayValue(sampleRates) doubleValue];
+        }
+        if(LCFeatureEnabled(@"audio.outputLatency")) spoofAudioOutputLatency = (5 + arc4random_uniform(26)) / 1000.0;
+        if(LCFeatureEnabled(@"audio.inputLatency")) spoofAudioInputLatency = (5 + arc4random_uniform(26)) / 1000.0;
+        if(LCFeatureEnabled(@"audio.otherPlaying")) spoofAudioOtherPlaying = arc4random_uniform(2) == 1;
+        if(LCFeatureEnabled(@"audio.channels")) {
+            spoofAudioOutputChannels = 1 + arc4random_uniform(2);
+            spoofAudioInputChannels = arc4random_uniform(3);
+        }
+    }
+    if(spoofGraphicsCategoryEnabled) {
+        if(LCFeatureEnabled(@"graphics.workingSet")) spoofGPUWorkingSetSize = (2 + arc4random_uniform(7)) * 1024ULL * 1024ULL * 1024ULL;
+        if(LCFeatureEnabled(@"graphics.rayTracing")) spoofGraphicsSupportsRayTracing = arc4random_uniform(2) == 1;
+        if(LCFeatureEnabled(@"graphics.allFamilies")) spoofGraphicsSupportsAllFamilies = arc4random_uniform(2) == 1;
+    }
+    if(spoofWebViewCategoryEnabled && LCFeatureEnabled(@"web.screen")) {
+        spoofWebColorDepth = arc4random_uniform(4) == 0 ? 30 : 24;
+    }
 
     if(spoofLocaleCategoryEnabled) {
         if(spoofLocale) {
@@ -1019,6 +1097,8 @@ static void UIKitGuestHooksInit() {
     }
 
     BOOL shouldEnableSpoofProfile = [guestContainerInfo[@"spoofProfileEnabled"] boolValue];
+    NSDictionary *featureOverrides = guestContainerInfo[@"spoofFeatureOverrides"];
+    if([featureOverrides isKindOfClass:NSDictionary.class]) spoofFeatureOverrides = featureOverrides;
     spoofIdentityCategoryEnabled = LCBoolWithDefault(guestContainerInfo, @"spoofIdentityCategoryEnabled", YES);
     spoofSystemCategoryEnabled = LCBoolWithDefault(guestContainerInfo, @"spoofSystemCategoryEnabled", YES);
     spoofDisplayCategoryEnabled = LCBoolWithDefault(guestContainerInfo, @"spoofDisplayCategoryEnabled", YES);
@@ -1034,7 +1114,7 @@ static void UIKitGuestHooksInit() {
     spoofWebViewCategoryEnabled = LCBoolWithDefault(guestContainerInfo, @"spoofWebViewCategoryEnabled", YES);
     spoofAppPrivacyCategoryEnabled = LCBoolWithDefault(guestContainerInfo, @"spoofAppPrivacyCategoryEnabled", YES);
     spoofSensorsAndUserDataCategoryEnabled = LCBoolWithDefault(guestContainerInfo, @"spoofSensorsAndUserDataCategoryEnabled", YES);
-    if(shouldEnableSpoofProfile && spoofAppPrivacyCategoryEnabled && !strictTestMode) {
+    if(shouldEnableSpoofProfile && spoofAppPrivacyCategoryEnabled && LCFeatureEnabled(@"app.pasteboard") && !strictTestMode) {
         strictPrivatePasteboard = [UIPasteboard pasteboardWithUniqueName];
         LCSwizzleClassIfPresent(UIPasteboard.class, @selector(generalPasteboard), @selector(hook_generalPasteboard));
     }
@@ -1099,6 +1179,24 @@ static void UIKitGuestHooksInit() {
         NSNumber *storageAvailableCapacity = guestContainerInfo[@"spoofStorageAvailableCapacity"];
         NSString *gpuName = guestContainerInfo[@"spoofGPUName"];
         NSNumber *audioOutputVolume = guestContainerInfo[@"spoofAudioOutputVolume"];
+        NSNumber *audioSampleRate = guestContainerInfo[@"spoofAudioSampleRate"];
+        NSNumber *audioOutputLatency = guestContainerInfo[@"spoofAudioOutputLatency"];
+        NSNumber *audioInputLatency = guestContainerInfo[@"spoofAudioInputLatency"];
+        NSNumber *audioOtherPlaying = guestContainerInfo[@"spoofAudioOtherPlaying"];
+        NSNumber *audioOutputChannels = guestContainerInfo[@"spoofAudioOutputChannels"];
+        NSNumber *audioInputChannels = guestContainerInfo[@"spoofAudioInputChannels"];
+        NSNumber *gpuWorkingSetSize = guestContainerInfo[@"spoofGPUWorkingSetSize"];
+        NSNumber *graphicsSupportsRayTracing = guestContainerInfo[@"spoofGraphicsSupportsRayTracing"];
+        NSNumber *graphicsSupportsAllFamilies = guestContainerInfo[@"spoofGraphicsSupportsAllFamilies"];
+        NSString *storageVolumeName = guestContainerInfo[@"spoofStorageVolumeName"];
+        NSString *storageVolumeUUID = guestContainerInfo[@"spoofStorageVolumeUUID"];
+        NSNumber *storageFileCreationTime = guestContainerInfo[@"spoofStorageFileCreationTime"];
+        NSNumber *storageVolumeCreationTime = guestContainerInfo[@"spoofStorageVolumeCreationTime"];
+        NSString *customUserAgent = guestContainerInfo[@"spoofCustomUserAgent"];
+        NSString *webGLVendor = guestContainerInfo[@"spoofWebGLVendor"];
+        NSString *webGLRenderer = guestContainerInfo[@"spoofWebGLRenderer"];
+        NSString *webCanvasDataURL = guestContainerInfo[@"spoofWebCanvasDataURL"];
+        NSNumber *webColorDepth = guestContainerInfo[@"spoofWebColorDepth"];
 
         if([deviceName isKindOfClass:NSString.class] && deviceName.length > 0) {
             spoofDeviceName = deviceName;
@@ -1226,6 +1324,24 @@ static void UIKitGuestHooksInit() {
         if([audioOutputVolume isKindOfClass:NSNumber.class]) {
             spoofAudioOutputVolume = MIN(1, MAX(0, audioOutputVolume.floatValue));
         }
+        if([audioSampleRate isKindOfClass:NSNumber.class] && audioSampleRate.doubleValue > 0) spoofAudioSampleRate = audioSampleRate.doubleValue;
+        if([audioOutputLatency isKindOfClass:NSNumber.class] && audioOutputLatency.doubleValue >= 0) spoofAudioOutputLatency = audioOutputLatency.doubleValue;
+        if([audioInputLatency isKindOfClass:NSNumber.class] && audioInputLatency.doubleValue >= 0) spoofAudioInputLatency = audioInputLatency.doubleValue;
+        if([audioOtherPlaying isKindOfClass:NSNumber.class]) spoofAudioOtherPlaying = audioOtherPlaying.boolValue;
+        if([audioOutputChannels isKindOfClass:NSNumber.class] && audioOutputChannels.integerValue >= 0) spoofAudioOutputChannels = audioOutputChannels.integerValue;
+        if([audioInputChannels isKindOfClass:NSNumber.class] && audioInputChannels.integerValue >= 0) spoofAudioInputChannels = audioInputChannels.integerValue;
+        if([gpuWorkingSetSize isKindOfClass:NSNumber.class] && gpuWorkingSetSize.unsignedLongLongValue > 0) spoofGPUWorkingSetSize = gpuWorkingSetSize.unsignedLongLongValue;
+        if([graphicsSupportsRayTracing isKindOfClass:NSNumber.class]) spoofGraphicsSupportsRayTracing = graphicsSupportsRayTracing.boolValue;
+        if([graphicsSupportsAllFamilies isKindOfClass:NSNumber.class]) spoofGraphicsSupportsAllFamilies = graphicsSupportsAllFamilies.boolValue;
+        if([storageVolumeName isKindOfClass:NSString.class]) spoofStorageVolumeName = storageVolumeName;
+        if([storageVolumeUUID isKindOfClass:NSString.class]) spoofStorageVolumeUUID = storageVolumeUUID;
+        if([storageFileCreationTime isKindOfClass:NSNumber.class]) spoofStorageFileCreationTime = storageFileCreationTime.longLongValue;
+        if([storageVolumeCreationTime isKindOfClass:NSNumber.class]) spoofStorageVolumeCreationTime = storageVolumeCreationTime.longLongValue;
+        if([customUserAgent isKindOfClass:NSString.class]) spoofCustomUserAgent = customUserAgent;
+        if([webGLVendor isKindOfClass:NSString.class]) spoofWebGLVendor = webGLVendor;
+        if([webGLRenderer isKindOfClass:NSString.class]) spoofWebGLRenderer = webGLRenderer;
+        if([webCanvasDataURL isKindOfClass:NSString.class]) spoofWebCanvasDataURL = webCanvasDataURL;
+        if([webColorDepth isKindOfClass:NSNumber.class] && webColorDepth.integerValue > 0) spoofWebColorDepth = webColorDepth.integerValue;
 
     }
 
@@ -1258,7 +1374,7 @@ static void UIKitGuestHooksInit() {
         LCSwizzleIfPresentWithSourceClass(concreteURLClass, NSURL.class,
             @selector(getResourceValue:forKey:error:), @selector(hook_getResourceValue:forKey:error:));
     }
-    if(shouldEnableSpoofProfile && spoofAppPrivacyCategoryEnabled) {
+    if(shouldEnableSpoofProfile && spoofAppPrivacyCategoryEnabled && LCFeatureEnabled(@"app.iCloud")) {
         LCSwizzleIfPresent(NSFileManager.class, @selector(ubiquityIdentityToken), @selector(hook_ubiquityIdentityToken));
     }
     if(shouldEnableSpoofProfile && spoofWebViewCategoryEnabled) {
@@ -1962,7 +2078,7 @@ static LCControlAppURLHandling LCHandleControlAppURL(NSURL *url, NSString** modi
 }
 - (BOOL)hook_canOpenURL:(NSURL *) url {
     if(canAppOpenItself(url) || shouldRedirectOpenURLToHost(url)) return YES;
-    if(spoofProfileEnabled && spoofAppPrivacyCategoryEnabled) return NO;
+    if(spoofProfileEnabled && spoofAppPrivacyCategoryEnabled && LCFeatureEnabled(@"app.canOpenURL")) return NO;
     return [self hook_canOpenURL:url];
 }
 
@@ -2096,7 +2212,7 @@ static LCControlAppURLHandling LCHandleControlAppURL(NSURL *url, NSString** modi
 @implementation UIPasteboard(hook)
 
 + (UIPasteboard *)hook_generalPasteboard {
-    if(strictTestMode || (spoofProfileEnabled && spoofAppPrivacyCategoryEnabled)) {
+    if(strictTestMode || (spoofProfileEnabled && spoofAppPrivacyCategoryEnabled && LCFeatureEnabled(@"app.pasteboard"))) {
         return strictPrivatePasteboard ?: [self hook_generalPasteboard];
     }
     return [self hook_generalPasteboard];
@@ -2119,21 +2235,21 @@ static LCControlAppURLHandling LCHandleControlAppURL(NSURL *url, NSString** modi
 @implementation NSUserDefaults(LCFingerprintProfile)
 
 - (BOOL)hook_boolForKey:(NSString *)defaultName {
-    if(spoofProfileEnabled && spoofSystemCategoryEnabled && [defaultName isEqualToString:@"LDMGlobalEnabled"]) return NO;
+    if(spoofProfileEnabled && spoofSystemCategoryEnabled && LCFeatureEnabled(@"system.lowDataMode") && [defaultName isEqualToString:@"LDMGlobalEnabled"]) return NO;
     return [self hook_boolForKey:defaultName];
 }
 
 @end
 
 static id LCStorageProfileValue(NSURLResourceKey key) {
-    if([key isEqualToString:NSURLCreationDateKey]) return [NSDate dateWithTimeIntervalSince1970:1735689600];
-    if([key isEqualToString:NSURLVolumeTotalCapacityKey]) return @(spoofStorageTotalCapacity);
-    if([key isEqualToString:NSURLVolumeAvailableCapacityKey]) return @(spoofStorageAvailableCapacity);
-    if([key isEqualToString:NSURLVolumeAvailableCapacityForImportantUsageKey]) return @(spoofStorageAvailableCapacity);
-    if([key isEqualToString:NSURLVolumeAvailableCapacityForOpportunisticUsageKey]) return @(spoofStorageAvailableCapacity);
-    if([key isEqualToString:NSURLVolumeCreationDateKey]) return [NSDate dateWithTimeIntervalSince1970:1704067200];
-    if([key isEqualToString:NSURLVolumeUUIDStringKey]) return @"00000000-0000-0000-0000-000000000000";
-    if([key isEqualToString:NSURLVolumeNameKey] || [key isEqualToString:NSURLVolumeLocalizedNameKey]) return @"Data";
+    if(LCFeatureEnabled(@"storage.creationDates") && [key isEqualToString:NSURLCreationDateKey]) return [NSDate dateWithTimeIntervalSince1970:spoofStorageFileCreationTime];
+    if(LCFeatureEnabled(@"storage.capacity") && [key isEqualToString:NSURLVolumeTotalCapacityKey]) return @(spoofStorageTotalCapacity);
+    if(LCFeatureEnabled(@"storage.capacity") && [key isEqualToString:NSURLVolumeAvailableCapacityKey]) return @(spoofStorageAvailableCapacity);
+    if(LCFeatureEnabled(@"storage.capacity") && [key isEqualToString:NSURLVolumeAvailableCapacityForImportantUsageKey]) return @(spoofStorageAvailableCapacity);
+    if(LCFeatureEnabled(@"storage.capacity") && [key isEqualToString:NSURLVolumeAvailableCapacityForOpportunisticUsageKey]) return @(spoofStorageAvailableCapacity);
+    if(LCFeatureEnabled(@"storage.creationDates") && [key isEqualToString:NSURLVolumeCreationDateKey]) return [NSDate dateWithTimeIntervalSince1970:spoofStorageVolumeCreationTime];
+    if(LCFeatureEnabled(@"storage.identity") && [key isEqualToString:NSURLVolumeUUIDStringKey]) return spoofStorageVolumeUUID;
+    if(LCFeatureEnabled(@"storage.identity") && ([key isEqualToString:NSURLVolumeNameKey] || [key isEqualToString:NSURLVolumeLocalizedNameKey])) return spoofStorageVolumeName;
     return nil;
 }
 
@@ -2166,7 +2282,7 @@ static id LCStorageProfileValue(NSURLResourceKey key) {
 @implementation NSFileManager(LCFingerprintProfile)
 
 - (id)hook_ubiquityIdentityToken {
-    if(spoofProfileEnabled && spoofAppPrivacyCategoryEnabled) return nil;
+    if(spoofProfileEnabled && spoofAppPrivacyCategoryEnabled && LCFeatureEnabled(@"app.iCloud")) return nil;
     return [self hook_ubiquityIdentityToken];
 }
 

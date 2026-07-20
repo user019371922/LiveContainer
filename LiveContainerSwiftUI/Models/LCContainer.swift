@@ -93,6 +93,25 @@ class LCContainer : ObservableObject, Hashable {
     @Published var spoofStorageAvailableCapacity: Int64
     @Published var spoofGPUName: String
     @Published var spoofAudioOutputVolume: Double
+    @Published var spoofAudioSampleRate: Double
+    @Published var spoofAudioOutputLatency: Double
+    @Published var spoofAudioInputLatency: Double
+    @Published var spoofAudioOtherPlaying: Bool
+    @Published var spoofAudioOutputChannels: Int
+    @Published var spoofAudioInputChannels: Int
+    @Published var spoofGPUWorkingSetSize: Int64
+    @Published var spoofGraphicsSupportsRayTracing: Bool
+    @Published var spoofGraphicsSupportsAllFamilies: Bool
+    @Published var spoofStorageVolumeName: String
+    @Published var spoofStorageVolumeUUID: String
+    @Published var spoofStorageFileCreationTime: Int64
+    @Published var spoofStorageVolumeCreationTime: Int64
+    @Published var spoofCustomUserAgent: String
+    @Published var spoofWebGLVendor: String
+    @Published var spoofWebGLRenderer: String
+    @Published var spoofWebCanvasDataURL: String
+    @Published var spoofWebColorDepth: Int
+    @Published var spoofFeatureOverrides: [String: Bool]
     private var infoDict : [String:Any]?
     public var containerURL : URL {
         if let resolvedContainerURL {
@@ -204,6 +223,25 @@ class LCContainer : ObservableObject, Hashable {
         spoofStorageAvailableCapacity: Int64 = 68_719_476_736,
         spoofGPUName: String = "Apple GPU",
         spoofAudioOutputVolume: Double = 0.5,
+        spoofAudioSampleRate: Double = 48_000,
+        spoofAudioOutputLatency: Double = 0.01,
+        spoofAudioInputLatency: Double = 0.01,
+        spoofAudioOtherPlaying: Bool = false,
+        spoofAudioOutputChannels: Int = 2,
+        spoofAudioInputChannels: Int = 1,
+        spoofGPUWorkingSetSize: Int64 = 4_294_967_296,
+        spoofGraphicsSupportsRayTracing: Bool = true,
+        spoofGraphicsSupportsAllFamilies: Bool = true,
+        spoofStorageVolumeName: String = "Data",
+        spoofStorageVolumeUUID: String = "00000000-0000-0000-0000-000000000000",
+        spoofStorageFileCreationTime: Int64 = 1_735_689_600,
+        spoofStorageVolumeCreationTime: Int64 = 1_704_067_200,
+        spoofCustomUserAgent: String = "",
+        spoofWebGLVendor: String = "Apple Inc.",
+        spoofWebGLRenderer: String = "Apple GPU",
+        spoofWebCanvasDataURL: String = "data:image/png;base64,iVBORw0KGgo=",
+        spoofWebColorDepth: Int = 24,
+        spoofFeatureOverrides: [String: Bool] = [:],
         bookmarkData: Data? = nil,
         resolvedContainerURL: URL? = nil
     ) {
@@ -278,6 +316,25 @@ class LCContainer : ObservableObject, Hashable {
         self.spoofStorageAvailableCapacity = spoofStorageAvailableCapacity
         self.spoofGPUName = spoofGPUName
         self.spoofAudioOutputVolume = spoofAudioOutputVolume
+        self.spoofAudioSampleRate = spoofAudioSampleRate
+        self.spoofAudioOutputLatency = spoofAudioOutputLatency
+        self.spoofAudioInputLatency = spoofAudioInputLatency
+        self.spoofAudioOtherPlaying = spoofAudioOtherPlaying
+        self.spoofAudioOutputChannels = spoofAudioOutputChannels
+        self.spoofAudioInputChannels = spoofAudioInputChannels
+        self.spoofGPUWorkingSetSize = spoofGPUWorkingSetSize
+        self.spoofGraphicsSupportsRayTracing = spoofGraphicsSupportsRayTracing
+        self.spoofGraphicsSupportsAllFamilies = spoofGraphicsSupportsAllFamilies
+        self.spoofStorageVolumeName = spoofStorageVolumeName
+        self.spoofStorageVolumeUUID = spoofStorageVolumeUUID
+        self.spoofStorageFileCreationTime = spoofStorageFileCreationTime
+        self.spoofStorageVolumeCreationTime = spoofStorageVolumeCreationTime
+        self.spoofCustomUserAgent = spoofCustomUserAgent
+        self.spoofWebGLVendor = spoofWebGLVendor
+        self.spoofWebGLRenderer = spoofWebGLRenderer
+        self.spoofWebCanvasDataURL = spoofWebCanvasDataURL
+        self.spoofWebColorDepth = spoofWebColorDepth
+        self.spoofFeatureOverrides = spoofFeatureOverrides
         self.storageBookMark = bookmarkData
         self.resolvedContainerURL = resolvedContainerURL
     }
@@ -486,6 +543,25 @@ class LCContainer : ObservableObject, Hashable {
         infoDict!["spoofStorageAvailableCapacity"] = spoofStorageAvailableCapacity
         infoDict!["spoofGPUName"] = spoofGPUName
         infoDict!["spoofAudioOutputVolume"] = spoofAudioOutputVolume
+        infoDict!["spoofAudioSampleRate"] = spoofAudioSampleRate
+        infoDict!["spoofAudioOutputLatency"] = spoofAudioOutputLatency
+        infoDict!["spoofAudioInputLatency"] = spoofAudioInputLatency
+        infoDict!["spoofAudioOtherPlaying"] = spoofAudioOtherPlaying
+        infoDict!["spoofAudioOutputChannels"] = spoofAudioOutputChannels
+        infoDict!["spoofAudioInputChannels"] = spoofAudioInputChannels
+        infoDict!["spoofGPUWorkingSetSize"] = spoofGPUWorkingSetSize
+        infoDict!["spoofGraphicsSupportsRayTracing"] = spoofGraphicsSupportsRayTracing
+        infoDict!["spoofGraphicsSupportsAllFamilies"] = spoofGraphicsSupportsAllFamilies
+        infoDict!["spoofStorageVolumeName"] = spoofStorageVolumeName
+        infoDict!["spoofStorageVolumeUUID"] = spoofStorageVolumeUUID
+        infoDict!["spoofStorageFileCreationTime"] = spoofStorageFileCreationTime
+        infoDict!["spoofStorageVolumeCreationTime"] = spoofStorageVolumeCreationTime
+        infoDict!["spoofCustomUserAgent"] = spoofCustomUserAgent
+        infoDict!["spoofWebGLVendor"] = spoofWebGLVendor
+        infoDict!["spoofWebGLRenderer"] = spoofWebGLRenderer
+        infoDict!["spoofWebCanvasDataURL"] = spoofWebCanvasDataURL
+        infoDict!["spoofWebColorDepth"] = spoofWebColorDepth
+        infoDict!["spoofFeatureOverrides"] = spoofFeatureOverrides
         infoDict!["spoofUserInterfaceStyle"] = spoofUserInterfaceStyle
         infoDict!["spoofAccessibilityContrast"] = spoofAccessibilityContrast
         infoDict!["spoofDisplayGamut"] = spoofDisplayGamut
@@ -568,6 +644,25 @@ class LCContainer : ObservableObject, Hashable {
         spoofStorageAvailableCapacity = dictionary["spoofStorageAvailableCapacity"] as? Int64 ?? 68_719_476_736
         spoofGPUName = dictionary["spoofGPUName"] as? String ?? "Apple GPU"
         spoofAudioOutputVolume = dictionary["spoofAudioOutputVolume"] as? Double ?? 0.5
+        spoofAudioSampleRate = dictionary["spoofAudioSampleRate"] as? Double ?? 48_000
+        spoofAudioOutputLatency = dictionary["spoofAudioOutputLatency"] as? Double ?? 0.01
+        spoofAudioInputLatency = dictionary["spoofAudioInputLatency"] as? Double ?? 0.01
+        spoofAudioOtherPlaying = dictionary["spoofAudioOtherPlaying"] as? Bool ?? false
+        spoofAudioOutputChannels = dictionary["spoofAudioOutputChannels"] as? Int ?? 2
+        spoofAudioInputChannels = dictionary["spoofAudioInputChannels"] as? Int ?? 1
+        spoofGPUWorkingSetSize = dictionary["spoofGPUWorkingSetSize"] as? Int64 ?? 4_294_967_296
+        spoofGraphicsSupportsRayTracing = dictionary["spoofGraphicsSupportsRayTracing"] as? Bool ?? true
+        spoofGraphicsSupportsAllFamilies = dictionary["spoofGraphicsSupportsAllFamilies"] as? Bool ?? true
+        spoofStorageVolumeName = dictionary["spoofStorageVolumeName"] as? String ?? "Data"
+        spoofStorageVolumeUUID = dictionary["spoofStorageVolumeUUID"] as? String ?? "00000000-0000-0000-0000-000000000000"
+        spoofStorageFileCreationTime = dictionary["spoofStorageFileCreationTime"] as? Int64 ?? 1_735_689_600
+        spoofStorageVolumeCreationTime = dictionary["spoofStorageVolumeCreationTime"] as? Int64 ?? 1_704_067_200
+        spoofCustomUserAgent = dictionary["spoofCustomUserAgent"] as? String ?? ""
+        spoofWebGLVendor = dictionary["spoofWebGLVendor"] as? String ?? "Apple Inc."
+        spoofWebGLRenderer = dictionary["spoofWebGLRenderer"] as? String ?? "Apple GPU"
+        spoofWebCanvasDataURL = dictionary["spoofWebCanvasDataURL"] as? String ?? "data:image/png;base64,iVBORw0KGgo="
+        spoofWebColorDepth = dictionary["spoofWebColorDepth"] as? Int ?? 24
+        spoofFeatureOverrides = dictionary["spoofFeatureOverrides"] as? [String: Bool] ?? [:]
         spoofUserInterfaceStyle = dictionary["spoofUserInterfaceStyle"] as? Int ?? 1
         spoofAccessibilityContrast = dictionary["spoofAccessibilityContrast"] as? Int ?? 0
         spoofDisplayGamut = dictionary["spoofDisplayGamut"] as? Int ?? 2
