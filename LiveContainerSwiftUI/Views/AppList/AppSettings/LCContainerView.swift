@@ -222,7 +222,7 @@ struct LCContainerView : View {
                         Text("Disable an individual category if an app depends on the real API. Sensors & Personal Data intentionally reports permissions or hardware as unavailable instead of fabricating contacts, photos, locations, or sensor samples.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("Identity").font(.headline)
+                        DisclosureGroup("Identity") {
                         Toggle(isOn: $container.spoofIdentifierForVendor) {
                             Text("lc.container.spoofIdentifierForVendor".loc)
                         }
@@ -310,7 +310,10 @@ struct LCContainerView : View {
                                 .multilineTextAlignment(.trailing)
                                 .onSubmit { saveSpoofProfile() }
                         }
-                        Text("Operating System").font(.headline)
+                        }
+                        .disabled(!container.spoofIdentityCategoryEnabled)
+
+                        DisclosureGroup("System & Display") {
                         HStack {
                             Text("System Name")
                             TextField("iOS", text: $typingSpoofSystemName)
@@ -327,7 +330,7 @@ struct LCContainerView : View {
                                     saveSpoofProfile()
                                 }
                         }
-                        DisclosureGroup("System & Display") {
+                        DisclosureGroup("Advanced Hardware & Display") {
                             TextField("Host Name", text: $container.spoofHostName)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
@@ -398,22 +401,65 @@ struct LCContainerView : View {
                                     .keyboardType(.decimalPad)
                                     .multilineTextAlignment(.trailing)
                             }
-                            TextField("Storage Total Bytes", value: $container.spoofStorageTotalCapacity, format: .number)
-                                .keyboardType(.numberPad)
-                            TextField("Storage Available Bytes", value: $container.spoofStorageAvailableCapacity, format: .number)
-                                .keyboardType(.numberPad)
-                            TextField("GPU Name", text: $container.spoofGPUName)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
+                            Picker("Appearance", selection: $container.spoofUserInterfaceStyle) {
+                                Text("Use System").tag(0)
+                                Text("Light Mode").tag(1)
+                                Text("Dark Mode").tag(2)
+                            }
+                            .onChange(of: container.spoofUserInterfaceStyle) { _ in saveSpoofProfile() }
+                            Picker("Display Gamut", selection: $container.spoofDisplayGamut) {
+                                Text("Unspecified").tag(0)
+                                Text("sRGB").tag(1)
+                                Text("Display P3").tag(2)
+                            }
+                            .onChange(of: container.spoofDisplayGamut) { _ in saveSpoofProfile() }
+                            Picker("Horizontal Size Class", selection: $container.spoofHorizontalSizeClass) {
+                                Text("Unspecified").tag(0)
+                                Text("Compact").tag(1)
+                                Text("Regular").tag(2)
+                            }
+                            .onChange(of: container.spoofHorizontalSizeClass) { _ in saveSpoofProfile() }
+                            Picker("Vertical Size Class", selection: $container.spoofVerticalSizeClass) {
+                                Text("Unspecified").tag(0)
+                                Text("Compact").tag(1)
+                                Text("Regular").tag(2)
+                            }
+                            .onChange(of: container.spoofVerticalSizeClass) { _ in saveSpoofProfile() }
+                            Picker("Text Size", selection: $container.spoofPreferredContentSizeCategory) {
+                                Text("Extra Small").tag("UICTContentSizeCategoryXS")
+                                Text("Small").tag("UICTContentSizeCategoryS")
+                                Text("Medium").tag("UICTContentSizeCategoryM")
+                                Text("Large").tag("UICTContentSizeCategoryL")
+                                Text("Extra Large").tag("UICTContentSizeCategoryXL")
+                                Text("XX Large").tag("UICTContentSizeCategoryXXL")
+                                Text("XXX Large").tag("UICTContentSizeCategoryXXXL")
+                                Text("Accessibility Medium").tag("UICTContentSizeCategoryAccessibilityM")
+                                Text("Accessibility Large").tag("UICTContentSizeCategoryAccessibilityL")
+                                Text("Accessibility XL").tag("UICTContentSizeCategoryAccessibilityXL")
+                                Text("Accessibility XXL").tag("UICTContentSizeCategoryAccessibilityXXL")
+                                Text("Accessibility XXXL").tag("UICTContentSizeCategoryAccessibilityXXXL")
+                            }
+                            .onChange(of: container.spoofPreferredContentSizeCategory) { _ in saveSpoofProfile() }
                             HStack {
-                                Text("Audio Volume")
-                                TextField("0.50", value: $container.spoofAudioOutputVolume, format: .number)
+                                Text("Safe Area T/B")
+                                TextField("Top", value: $container.spoofSafeAreaTop, format: .number)
                                     .keyboardType(.decimalPad)
-                                    .multilineTextAlignment(.trailing)
+                                TextField("Bottom", value: $container.spoofSafeAreaBottom, format: .number)
+                                    .keyboardType(.decimalPad)
+                            }
+                            HStack {
+                                Text("Safe Area L/R")
+                                TextField("Left", value: $container.spoofSafeAreaLeft, format: .number)
+                                    .keyboardType(.decimalPad)
+                                TextField("Right", value: $container.spoofSafeAreaRight, format: .number)
+                                    .keyboardType(.decimalPad)
                             }
                             Button("Save System & Display") { saveSpoofProfile() }
                         }
-                        Text("Locale & Time Zone").font(.headline)
+                        }
+                        .disabled(!container.spoofSystemCategoryEnabled && !container.spoofDisplayCategoryEnabled)
+
+                        DisclosureGroup("Locale & Time Zone") {
                         HStack {
                             Text("Locale ID")
                             TextField("en_US", text: $typingSpoofLocaleIdentifier)
@@ -450,8 +496,10 @@ struct LCContainerView : View {
                             applyRandomDeviceProfileValues()
                             saveSpoofProfile()
                         }
+                        }
+                        .disabled(!container.spoofLocaleCategoryEnabled)
 
-                        Text("Battery & Power").font(.headline)
+                        DisclosureGroup("Battery & Power") {
                         HStack {
                             Text("Battery Level")
                             TextField("0.83", text: $typingSpoofBatteryLevel)
@@ -473,8 +521,10 @@ struct LCContainerView : View {
                             .onChange(of: spoofLowPowerModeEnabled) { _ in
                                 saveSpoofProfile()
                             }
+                        }
+                        .disabled(!container.spoofBatteryCategoryEnabled)
 
-                        Text("Telephony").font(.headline)
+                        DisclosureGroup("Telephony") {
                         HStack {
                             Text("Subscriber ID")
                             TextField("A1B2C3D4-E5F6-47A8-9C2D-1234567890AB", text: $typingSpoofSubscriberIdentifier)
@@ -508,6 +558,95 @@ struct LCContainerView : View {
                         }
                         .onChange(of: typingSpoofRadioAccessTechnology) { _ in
                             saveSpoofProfile()
+                        }
+                        }
+                        .disabled(!container.spoofTelephonyCategoryEnabled)
+
+                        DisclosureGroup("Network Headers") {
+                            categoryToggle("Rewrite User-Agent and device headers", isOn: $container.spoofNetworkHeadersCategoryEnabled)
+                            Text("Uses the selected hardware model and system version for URLSession and WebKit-compatible request headers.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        DisclosureGroup("Accessibility & Appearance") {
+                            Picker("Appearance", selection: $container.spoofUserInterfaceStyle) {
+                                Text("Use System").tag(0)
+                                Text("Light Mode").tag(1)
+                                Text("Dark Mode").tag(2)
+                            }
+                            .onChange(of: container.spoofUserInterfaceStyle) { _ in saveSpoofProfile() }
+                            Picker("Contrast", selection: $container.spoofAccessibilityContrast) {
+                                Text("Normal").tag(0)
+                                Text("High").tag(1)
+                            }
+                            .onChange(of: container.spoofAccessibilityContrast) { _ in saveSpoofProfile() }
+                            Text("Other accessibility fingerprint APIs report a neutral, disabled state while this category is enabled.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .disabled(!container.spoofAccessibilityCategoryEnabled)
+
+                        DisclosureGroup("Storage") {
+                            TextField("Total Capacity (Bytes)", value: $container.spoofStorageTotalCapacity, format: .number)
+                                .keyboardType(.numberPad)
+                            TextField("Available Capacity (Bytes)", value: $container.spoofStorageAvailableCapacity, format: .number)
+                                .keyboardType(.numberPad)
+                            Button("Save Storage") { saveSpoofProfile() }
+                        }
+                        .disabled(!container.spoofStorageCategoryEnabled)
+
+                        DisclosureGroup("Network Environment") {
+                            categoryToggle("Hide local network environment", isOn: $container.spoofNetworkEnvironmentCategoryEnabled)
+                            Text("Covers hostname resolution, interface enumeration, VPN/proxy signals, Bonjour, and Network.framework browsing.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        DisclosureGroup("Audio Routes") {
+                            HStack {
+                                Text("Output Volume")
+                                TextField("0.50", value: $container.spoofAudioOutputVolume, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            Text("Route names, input devices, and output devices are hidden while enabled.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Save Audio") { saveSpoofProfile() }
+                        }
+                        .disabled(!container.spoofAudioCategoryEnabled)
+
+                        DisclosureGroup("Graphics & Metal") {
+                            TextField("GPU Name", text: $container.spoofGPUName)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            Text("Metal device name and capability queries use the protected graphics profile.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Save Graphics") { saveSpoofProfile() }
+                        }
+                        .disabled(!container.spoofGraphicsCategoryEnabled)
+
+                        DisclosureGroup("WebView Fingerprint") {
+                            Text("Platform, OS version, language, time zone, CPU count, memory, screen metrics, canvas, and WebGL values follow this profile.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            categoryToggle("Inject protected WebView profile", isOn: $container.spoofWebViewCategoryEnabled)
+                        }
+
+                        DisclosureGroup("App, Account & Pasteboard") {
+                            Text("Hides installed-app enumeration and iCloud identity, and gives the guest an isolated general pasteboard.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            categoryToggle("Protect app/account/pasteboard data", isOn: $container.spoofAppPrivacyCategoryEnabled)
+                        }
+
+                        DisclosureGroup("Sensors & Personal Data") {
+                            Text("Reports motion, location, contacts, calendars, reminders, media, and photo access as unavailable or denied without fabricating personal records.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            categoryToggle("Protect sensors and personal data", isOn: $container.spoofSensorsAndUserDataCategoryEnabled)
                         }
                         }
                         .disabled(container.blockDeviceInfoReads)
@@ -753,7 +892,13 @@ struct LCContainerView : View {
               container.spoofScreenWidth > 0 && container.spoofScreenHeight > 0 &&
               container.spoofScreenScale > 0 && container.spoofScreenNativeScale > 0 &&
               container.spoofMaximumFramesPerSecond > 0 &&
-              container.spoofScreenBrightness >= 0 && container.spoofScreenBrightness <= 1)
+              container.spoofScreenBrightness >= 0 && container.spoofScreenBrightness <= 1 &&
+              (0...2).contains(container.spoofUserInterfaceStyle) &&
+              (0...2).contains(container.spoofDisplayGamut) &&
+              (0...2).contains(container.spoofHorizontalSizeClass) &&
+              (0...2).contains(container.spoofVerticalSizeClass) &&
+              container.spoofSafeAreaTop >= 0 && container.spoofSafeAreaLeft >= 0 &&
+              container.spoofSafeAreaBottom >= 0 && container.spoofSafeAreaRight >= 0)
         let extendedValuesValid = (!container.spoofStorageCategoryEnabled || (
               container.spoofStorageTotalCapacity > 0 && container.spoofStorageAvailableCapacity >= 0 &&
               container.spoofStorageAvailableCapacity <= container.spoofStorageTotalCapacity)) &&
@@ -819,13 +964,27 @@ struct LCContainerView : View {
         container.spoofProcessorCount = ProcessInfo.processInfo.processorCount
         container.spoofPhysicalMemory = Int64(ProcessInfo.processInfo.physicalMemory)
         container.spoofThermalState = ProcessInfo.processInfo.thermalState.rawValue
-        if let screen = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.screen }).first {
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
+            let screen = scene.screen
             container.spoofScreenWidth = screen.nativeBounds.width
             container.spoofScreenHeight = screen.nativeBounds.height
             container.spoofScreenScale = screen.scale
             container.spoofScreenNativeScale = screen.nativeScale
             container.spoofMaximumFramesPerSecond = screen.maximumFramesPerSecond
             container.spoofScreenBrightness = screen.brightness
+            let traits = scene.traitCollection
+            container.spoofUserInterfaceStyle = traits.userInterfaceStyle.rawValue
+            container.spoofAccessibilityContrast = traits.accessibilityContrast.rawValue
+            container.spoofDisplayGamut = traits.displayGamut.rawValue
+            container.spoofHorizontalSizeClass = traits.horizontalSizeClass.rawValue
+            container.spoofVerticalSizeClass = traits.verticalSizeClass.rawValue
+            container.spoofPreferredContentSizeCategory = traits.preferredContentSizeCategory.rawValue
+            if let window = scene.windows.first(where: \.isKeyWindow) ?? scene.windows.first {
+                container.spoofSafeAreaTop = window.safeAreaInsets.top
+                container.spoofSafeAreaLeft = window.safeAreaInsets.left
+                container.spoofSafeAreaBottom = window.safeAreaInsets.bottom
+                container.spoofSafeAreaRight = window.safeAreaInsets.right
+            }
         }
         if let values = try? URL(fileURLWithPath: NSHomeDirectory()).resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityKey]) {
             container.spoofStorageTotalCapacity = Int64(values.volumeTotalCapacity ?? Int(container.spoofStorageTotalCapacity))
@@ -915,6 +1074,18 @@ struct LCContainerView : View {
         container.spoofScreenNativeScale = display.3
         container.spoofMaximumFramesPerSecond = display.4
         container.spoofScreenBrightness = Double.random(in: 0.25...0.85)
+        container.spoofUserInterfaceStyle = Bool.random() ? 1 : 2
+        container.spoofAccessibilityContrast = Int.random(in: 0...5) == 0 ? 1 : 0
+        container.spoofDisplayGamut = 2
+        container.spoofHorizontalSizeClass = isPad ? 2 : 1
+        container.spoofVerticalSizeClass = 2
+        container.spoofPreferredContentSizeCategory = [
+            "UICTContentSizeCategoryM", "UICTContentSizeCategoryL", "UICTContentSizeCategoryXL"
+        ].randomElement() ?? "UICTContentSizeCategoryL"
+        container.spoofSafeAreaTop = isPad ? 24 : 59
+        container.spoofSafeAreaLeft = 0
+        container.spoofSafeAreaBottom = isPad ? 20 : 34
+        container.spoofSafeAreaRight = 0
         let storageGB = [64, 128, 256, 512, 1024].randomElement() ?? 128
         container.spoofStorageTotalCapacity = Int64(storageGB) * 1_073_741_824
         let maximumFreeGB = Int64(max(8, storageGB - 8))

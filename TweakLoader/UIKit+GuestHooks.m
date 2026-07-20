@@ -79,6 +79,13 @@ CGFloat spoofScreenScale = 0;
 CGFloat spoofScreenNativeScale = 0;
 NSInteger spoofMaximumFramesPerSecond = 0;
 CGFloat spoofScreenBrightness = -1;
+NSInteger spoofUserInterfaceStyle = UIUserInterfaceStyleLight;
+NSInteger spoofAccessibilityContrast = UIAccessibilityContrastNormal;
+NSInteger spoofDisplayGamut = UIDisplayGamutP3;
+NSInteger spoofHorizontalSizeClass = UIUserInterfaceSizeClassCompact;
+NSInteger spoofVerticalSizeClass = UIUserInterfaceSizeClassRegular;
+UIContentSizeCategory spoofPreferredContentSizeCategory = UIContentSizeCategoryLarge;
+UIEdgeInsets spoofSafeAreaInsets = {59, 0, 34, 0};
 long long spoofStorageTotalCapacity = 128LL * 1024LL * 1024LL * 1024LL;
 long long spoofStorageAvailableCapacity = 64LL * 1024LL * 1024LL * 1024LL;
 NSString *spoofGPUName = @"Apple GPU";
@@ -838,6 +845,9 @@ static void LCApplyRotatingDeviceTemplateMetrics(void) {
         spoofMaximumFramesPerSecond = [spoofHardwareModel hasPrefix:@"iPad16"] ? 120 : 60;
         spoofProcessorCount = [spoofHardwareModel hasPrefix:@"iPad16"] ? 10 : 8;
         spoofPhysicalMemory = 8ULL * 1024ULL * 1024ULL * 1024ULL;
+        spoofHorizontalSizeClass = UIUserInterfaceSizeClassRegular;
+        spoofVerticalSizeClass = UIUserInterfaceSizeClassRegular;
+        spoofSafeAreaInsets = UIEdgeInsetsMake(24, 0, 20, 0);
     } else {
         spoofScreenWidth = isLarge ? 1290 : (isPro ? 1206 : 1179);
         spoofScreenHeight = isLarge ? 2796 : (isPro ? 2622 : 2556);
@@ -846,6 +856,9 @@ static void LCApplyRotatingDeviceTemplateMetrics(void) {
         spoofMaximumFramesPerSecond = isPro ? 120 : 60;
         spoofProcessorCount = 6;
         spoofPhysicalMemory = 8ULL * 1024ULL * 1024ULL * 1024ULL;
+        spoofHorizontalSizeClass = UIUserInterfaceSizeClassCompact;
+        spoofVerticalSizeClass = UIUserInterfaceSizeClassRegular;
+        spoofSafeAreaInsets = UIEdgeInsetsMake(59, 0, 34, 0);
     }
 }
 
@@ -895,6 +908,16 @@ static void LCRotateSpoofProfile(void) {
         if(!rotateUsesRealDeviceTemplates && spoofScreenNativeScale > 0) spoofScreenNativeScale = spoofScreenScale;
         if(!rotateUsesRealDeviceTemplates && spoofMaximumFramesPerSecond > 0) spoofMaximumFramesPerSecond = arc4random_uniform(2) == 0 ? 60 : 120;
         if(spoofScreenBrightness >= 0) spoofScreenBrightness = (CGFloat)arc4random_uniform(101) / 100.0;
+        spoofUserInterfaceStyle = arc4random_uniform(2) == 0 ? UIUserInterfaceStyleLight : UIUserInterfaceStyleDark;
+        spoofDisplayGamut = arc4random_uniform(4) == 0 ? UIDisplayGamutSRGB : UIDisplayGamutP3;
+        NSArray<UIContentSizeCategory> *contentSizes = @[
+            UIContentSizeCategoryMedium, UIContentSizeCategoryLarge, UIContentSizeCategoryExtraLarge
+        ];
+        spoofPreferredContentSizeCategory = LCRandomArrayValue(contentSizes);
+    }
+
+    if(spoofAccessibilityCategoryEnabled) {
+        spoofAccessibilityContrast = arc4random_uniform(6) == 0 ? UIAccessibilityContrastHigh : UIAccessibilityContrastNormal;
     }
 
     if(spoofStorageCategoryEnabled && spoofStorageTotalCapacity > 0) {
@@ -1057,6 +1080,16 @@ static void UIKitGuestHooksInit() {
         NSNumber *screenNativeScale = guestContainerInfo[@"spoofScreenNativeScale"];
         NSNumber *maximumFramesPerSecond = guestContainerInfo[@"spoofMaximumFramesPerSecond"];
         NSNumber *screenBrightness = guestContainerInfo[@"spoofScreenBrightness"];
+        NSNumber *userInterfaceStyle = guestContainerInfo[@"spoofUserInterfaceStyle"];
+        NSNumber *accessibilityContrast = guestContainerInfo[@"spoofAccessibilityContrast"];
+        NSNumber *displayGamut = guestContainerInfo[@"spoofDisplayGamut"];
+        NSNumber *horizontalSizeClass = guestContainerInfo[@"spoofHorizontalSizeClass"];
+        NSNumber *verticalSizeClass = guestContainerInfo[@"spoofVerticalSizeClass"];
+        NSString *preferredContentSizeCategory = guestContainerInfo[@"spoofPreferredContentSizeCategory"];
+        NSNumber *safeAreaTop = guestContainerInfo[@"spoofSafeAreaTop"];
+        NSNumber *safeAreaLeft = guestContainerInfo[@"spoofSafeAreaLeft"];
+        NSNumber *safeAreaBottom = guestContainerInfo[@"spoofSafeAreaBottom"];
+        NSNumber *safeAreaRight = guestContainerInfo[@"spoofSafeAreaRight"];
         NSString *kernelVersion = guestContainerInfo[@"spoofKernelVersion"];
         NSNumber *bootTime = guestContainerInfo[@"spoofBootTime"];
         NSNumber *cpuType = guestContainerInfo[@"spoofCPUType"];
@@ -1156,6 +1189,28 @@ static void UIKitGuestHooksInit() {
         if([screenBrightness isKindOfClass:NSNumber.class] && screenBrightness.doubleValue >= 0 && screenBrightness.doubleValue <= 1) {
             spoofScreenBrightness = screenBrightness.doubleValue;
         }
+        if([userInterfaceStyle isKindOfClass:NSNumber.class] && userInterfaceStyle.integerValue >= UIUserInterfaceStyleUnspecified && userInterfaceStyle.integerValue <= UIUserInterfaceStyleDark) {
+            spoofUserInterfaceStyle = userInterfaceStyle.integerValue;
+        }
+        if([accessibilityContrast isKindOfClass:NSNumber.class] && accessibilityContrast.integerValue >= UIAccessibilityContrastNormal && accessibilityContrast.integerValue <= UIAccessibilityContrastHigh) {
+            spoofAccessibilityContrast = accessibilityContrast.integerValue;
+        }
+        if([displayGamut isKindOfClass:NSNumber.class] && displayGamut.integerValue >= UIDisplayGamutUnspecified && displayGamut.integerValue <= UIDisplayGamutP3) {
+            spoofDisplayGamut = displayGamut.integerValue;
+        }
+        if([horizontalSizeClass isKindOfClass:NSNumber.class] && horizontalSizeClass.integerValue >= UIUserInterfaceSizeClassUnspecified && horizontalSizeClass.integerValue <= UIUserInterfaceSizeClassRegular) {
+            spoofHorizontalSizeClass = horizontalSizeClass.integerValue;
+        }
+        if([verticalSizeClass isKindOfClass:NSNumber.class] && verticalSizeClass.integerValue >= UIUserInterfaceSizeClassUnspecified && verticalSizeClass.integerValue <= UIUserInterfaceSizeClassRegular) {
+            spoofVerticalSizeClass = verticalSizeClass.integerValue;
+        }
+        if([preferredContentSizeCategory isKindOfClass:NSString.class] && preferredContentSizeCategory.length > 0) {
+            spoofPreferredContentSizeCategory = preferredContentSizeCategory;
+        }
+        if([safeAreaTop isKindOfClass:NSNumber.class]) spoofSafeAreaInsets.top = MAX(0, safeAreaTop.doubleValue);
+        if([safeAreaLeft isKindOfClass:NSNumber.class]) spoofSafeAreaInsets.left = MAX(0, safeAreaLeft.doubleValue);
+        if([safeAreaBottom isKindOfClass:NSNumber.class]) spoofSafeAreaInsets.bottom = MAX(0, safeAreaBottom.doubleValue);
+        if([safeAreaRight isKindOfClass:NSNumber.class]) spoofSafeAreaInsets.right = MAX(0, safeAreaRight.doubleValue);
         if([kernelVersion isKindOfClass:NSString.class] && kernelVersion.length > 0) spoofKernelVersion = kernelVersion;
         if([bootTime isKindOfClass:NSNumber.class] && bootTime.longLongValue > 0) spoofBootTime = (time_t)bootTime.longLongValue;
         if([cpuType isKindOfClass:NSNumber.class] && cpuType.intValue > 0) spoofCPUType = cpuType.intValue;
@@ -1176,7 +1231,6 @@ static void UIKitGuestHooksInit() {
 
     if(shouldEnableSpoofProfile && spoofAccessibilityCategoryEnabled) {
         LCInstallNeutralAccessibilityProfile();
-        LCSwizzleIfPresent(UITraitCollection.class, @selector(userInterfaceStyle), @selector(hook_userInterfaceStyle));
         LCSwizzleIfPresent(UITraitCollection.class, @selector(accessibilityContrast), @selector(hook_accessibilityContrast));
     }
     if(shouldEnableSpoofProfile && spoofLocaleCategoryEnabled) {
@@ -1265,6 +1319,7 @@ static void UIKitGuestHooksInit() {
         LCSwizzleIfPresent(UITraitCollection.class, @selector(horizontalSizeClass), @selector(hook_horizontalSizeClass));
         LCSwizzleIfPresent(UITraitCollection.class, @selector(verticalSizeClass), @selector(hook_verticalSizeClass));
         LCSwizzleIfPresent(UITraitCollection.class, @selector(preferredContentSizeCategory), @selector(hook_preferredContentSizeCategory));
+        LCSwizzleIfPresent(UITraitCollection.class, @selector(userInterfaceStyle), @selector(hook_userInterfaceStyle));
         LCSwizzleIfPresent(UIWindow.class, @selector(safeAreaInsets), @selector(hook_safeAreaInsets));
     }
     if(blockDeviceInfoReads || (spoofLocaleCategoryEnabled && spoofLocale)) {
@@ -2345,34 +2400,34 @@ static id LCStorageProfileValue(NSURLResourceKey key) {
 @implementation UITraitCollection(LCFingerprintProfile)
 
 - (UIDisplayGamut)hook_displayGamut {
-    if(spoofProfileEnabled && spoofDisplayCategoryEnabled) return UIDisplayGamutP3;
+    if(spoofProfileEnabled && spoofDisplayCategoryEnabled) return (UIDisplayGamut)spoofDisplayGamut;
     return [self hook_displayGamut];
 }
 
 - (UIUserInterfaceSizeClass)hook_horizontalSizeClass {
-    if(spoofProfileEnabled && spoofDisplayCategoryEnabled) {
-        return [spoofDeviceModel.lowercaseString containsString:@"ipad"] ? UIUserInterfaceSizeClassRegular : UIUserInterfaceSizeClassCompact;
-    }
+    if(spoofProfileEnabled && spoofDisplayCategoryEnabled) return (UIUserInterfaceSizeClass)spoofHorizontalSizeClass;
     return [self hook_horizontalSizeClass];
 }
 
 - (UIUserInterfaceSizeClass)hook_verticalSizeClass {
-    if(spoofProfileEnabled && spoofDisplayCategoryEnabled) return UIUserInterfaceSizeClassRegular;
+    if(spoofProfileEnabled && spoofDisplayCategoryEnabled) return (UIUserInterfaceSizeClass)spoofVerticalSizeClass;
     return [self hook_verticalSizeClass];
 }
 
 - (UIContentSizeCategory)hook_preferredContentSizeCategory {
-    if(spoofProfileEnabled && spoofDisplayCategoryEnabled) return UIContentSizeCategoryLarge;
+    if(spoofProfileEnabled && spoofDisplayCategoryEnabled) return spoofPreferredContentSizeCategory;
     return [self hook_preferredContentSizeCategory];
 }
 
 - (UIUserInterfaceStyle)hook_userInterfaceStyle {
-    if(spoofProfileEnabled && spoofAccessibilityCategoryEnabled) return UIUserInterfaceStyleLight;
+    if(spoofProfileEnabled && spoofDisplayCategoryEnabled && spoofUserInterfaceStyle != UIUserInterfaceStyleUnspecified) {
+        return (UIUserInterfaceStyle)spoofUserInterfaceStyle;
+    }
     return [self hook_userInterfaceStyle];
 }
 
 - (UIAccessibilityContrast)hook_accessibilityContrast {
-    if(spoofProfileEnabled && spoofAccessibilityCategoryEnabled) return UIAccessibilityContrastNormal;
+    if(spoofProfileEnabled && spoofAccessibilityCategoryEnabled) return (UIAccessibilityContrast)spoofAccessibilityContrast;
     return [self hook_accessibilityContrast];
 }
 
@@ -2382,8 +2437,7 @@ static id LCStorageProfileValue(NSURLResourceKey key) {
 
 - (UIEdgeInsets)hook_safeAreaInsets {
     if(spoofProfileEnabled && spoofDisplayCategoryEnabled) {
-        BOOL isPad = [spoofDeviceModel.lowercaseString containsString:@"ipad"] || [spoofHardwareModel hasPrefix:@"iPad"];
-        return isPad ? UIEdgeInsetsMake(24, 0, 20, 0) : UIEdgeInsetsMake(59, 0, 34, 0);
+        return spoofSafeAreaInsets;
     }
     return [self hook_safeAreaInsets];
 }

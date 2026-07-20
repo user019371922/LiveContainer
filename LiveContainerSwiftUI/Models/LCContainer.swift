@@ -79,6 +79,16 @@ class LCContainer : ObservableObject, Hashable {
     @Published var spoofScreenNativeScale: Double
     @Published var spoofMaximumFramesPerSecond: Int
     @Published var spoofScreenBrightness: Double
+    @Published var spoofUserInterfaceStyle: Int
+    @Published var spoofAccessibilityContrast: Int
+    @Published var spoofDisplayGamut: Int
+    @Published var spoofHorizontalSizeClass: Int
+    @Published var spoofVerticalSizeClass: Int
+    @Published var spoofPreferredContentSizeCategory: String
+    @Published var spoofSafeAreaTop: Double
+    @Published var spoofSafeAreaLeft: Double
+    @Published var spoofSafeAreaBottom: Double
+    @Published var spoofSafeAreaRight: Double
     @Published var spoofStorageTotalCapacity: Int64
     @Published var spoofStorageAvailableCapacity: Int64
     @Published var spoofGPUName: String
@@ -180,6 +190,16 @@ class LCContainer : ObservableObject, Hashable {
         spoofScreenNativeScale: Double = 3,
         spoofMaximumFramesPerSecond: Int = 60,
         spoofScreenBrightness: Double = 0.5,
+        spoofUserInterfaceStyle: Int = 1,
+        spoofAccessibilityContrast: Int = 0,
+        spoofDisplayGamut: Int = 2,
+        spoofHorizontalSizeClass: Int = 1,
+        spoofVerticalSizeClass: Int = 2,
+        spoofPreferredContentSizeCategory: String = "UICTContentSizeCategoryL",
+        spoofSafeAreaTop: Double = 59,
+        spoofSafeAreaLeft: Double = 0,
+        spoofSafeAreaBottom: Double = 34,
+        spoofSafeAreaRight: Double = 0,
         spoofStorageTotalCapacity: Int64 = 137_438_953_472,
         spoofStorageAvailableCapacity: Int64 = 68_719_476_736,
         spoofGPUName: String = "Apple GPU",
@@ -244,6 +264,16 @@ class LCContainer : ObservableObject, Hashable {
         self.spoofScreenNativeScale = spoofScreenNativeScale
         self.spoofMaximumFramesPerSecond = spoofMaximumFramesPerSecond
         self.spoofScreenBrightness = spoofScreenBrightness
+        self.spoofUserInterfaceStyle = spoofUserInterfaceStyle
+        self.spoofAccessibilityContrast = spoofAccessibilityContrast
+        self.spoofDisplayGamut = spoofDisplayGamut
+        self.spoofHorizontalSizeClass = spoofHorizontalSizeClass
+        self.spoofVerticalSizeClass = spoofVerticalSizeClass
+        self.spoofPreferredContentSizeCategory = spoofPreferredContentSizeCategory
+        self.spoofSafeAreaTop = spoofSafeAreaTop
+        self.spoofSafeAreaLeft = spoofSafeAreaLeft
+        self.spoofSafeAreaBottom = spoofSafeAreaBottom
+        self.spoofSafeAreaRight = spoofSafeAreaRight
         self.spoofStorageTotalCapacity = spoofStorageTotalCapacity
         self.spoofStorageAvailableCapacity = spoofStorageAvailableCapacity
         self.spoofGPUName = spoofGPUName
@@ -456,6 +486,16 @@ class LCContainer : ObservableObject, Hashable {
         infoDict!["spoofStorageAvailableCapacity"] = spoofStorageAvailableCapacity
         infoDict!["spoofGPUName"] = spoofGPUName
         infoDict!["spoofAudioOutputVolume"] = spoofAudioOutputVolume
+        infoDict!["spoofUserInterfaceStyle"] = spoofUserInterfaceStyle
+        infoDict!["spoofAccessibilityContrast"] = spoofAccessibilityContrast
+        infoDict!["spoofDisplayGamut"] = spoofDisplayGamut
+        infoDict!["spoofHorizontalSizeClass"] = spoofHorizontalSizeClass
+        infoDict!["spoofVerticalSizeClass"] = spoofVerticalSizeClass
+        infoDict!["spoofPreferredContentSizeCategory"] = spoofPreferredContentSizeCategory
+        infoDict!["spoofSafeAreaTop"] = spoofSafeAreaTop
+        infoDict!["spoofSafeAreaLeft"] = spoofSafeAreaLeft
+        infoDict!["spoofSafeAreaBottom"] = spoofSafeAreaBottom
+        infoDict!["spoofSafeAreaRight"] = spoofSafeAreaRight
         writeSystemDisplayProfile(to: &infoDict!)
         
         do {
@@ -528,6 +568,16 @@ class LCContainer : ObservableObject, Hashable {
         spoofStorageAvailableCapacity = dictionary["spoofStorageAvailableCapacity"] as? Int64 ?? 68_719_476_736
         spoofGPUName = dictionary["spoofGPUName"] as? String ?? "Apple GPU"
         spoofAudioOutputVolume = dictionary["spoofAudioOutputVolume"] as? Double ?? 0.5
+        spoofUserInterfaceStyle = dictionary["spoofUserInterfaceStyle"] as? Int ?? 1
+        spoofAccessibilityContrast = dictionary["spoofAccessibilityContrast"] as? Int ?? 0
+        spoofDisplayGamut = dictionary["spoofDisplayGamut"] as? Int ?? 2
+        spoofHorizontalSizeClass = dictionary["spoofHorizontalSizeClass"] as? Int ?? 1
+        spoofVerticalSizeClass = dictionary["spoofVerticalSizeClass"] as? Int ?? 2
+        spoofPreferredContentSizeCategory = dictionary["spoofPreferredContentSizeCategory"] as? String ?? "UICTContentSizeCategoryL"
+        spoofSafeAreaTop = dictionary["spoofSafeAreaTop"] as? Double ?? 59
+        spoofSafeAreaLeft = dictionary["spoofSafeAreaLeft"] as? Double ?? 0
+        spoofSafeAreaBottom = dictionary["spoofSafeAreaBottom"] as? Double ?? 34
+        spoofSafeAreaRight = dictionary["spoofSafeAreaRight"] as? Double ?? 0
     }
 
     private func loadSpoofCategorySettings(from dictionary: [String: Any]) {
