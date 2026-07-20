@@ -32,7 +32,6 @@ NSData *spoofSubscriberCarrierToken = nil;
 BOOL spoofSubscriberSIMInsertedEnabled = NO;
 BOOL spoofSubscriberSIMInserted = NO;
 NSString *spoofHardwareModel = nil;
-BOOL launchURLProcessed = NO;
 
 @interface LCTelephonyNetworkInfoHookProvider : NSObject
 @end
