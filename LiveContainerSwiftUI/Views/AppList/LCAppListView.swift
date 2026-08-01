@@ -37,9 +37,6 @@ struct AppReplaceOption : Hashable {
 }
 
 struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
-    @Binding var appDataFolderNames: [String]
-    @Binding var tweakFolderNames: [String]
-    
     @State var didAppear = false
     // ipa choosing stuff
     @State var choosingIPA = false
@@ -120,10 +117,8 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         }
     }
     
-    init(appDataFolderNames: Binding<[String]>, tweakFolderNames: Binding<[String]>, searchContext: SearchContext) {
+    init(searchContext: SearchContext) {
         _installOptions = State(initialValue: [])
-        _appDataFolderNames = appDataFolderNames
-        _tweakFolderNames = tweakFolderNames
         self.searchContext = searchContext
     }
     
@@ -140,7 +135,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                 
                 LazyVStack {
                     ForEach(filteredApps, id: \.self) { app in
-                        LCAppBanner(appModel: app, delegate: self, appDataFolders: $appDataFolderNames, tweakFolders: $tweakFolderNames)
+                        LCAppBanner(appModel: app, delegate: self)
                     }
                     .transition(.scale)
                 }
@@ -158,7 +153,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                                 }
                                 
                                 ForEach(filteredHiddenApps, id: \.self) { app in
-                                    LCAppBanner(appModel: app, delegate: self, appDataFolders: $appDataFolderNames, tweakFolders: $tweakFolderNames)
+                                    LCAppBanner(appModel: app, delegate: self)
                                 }
                                 .transition(.scale)
                                 
@@ -181,7 +176,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                             }
                             ForEach(filteredHiddenApps, id: \.self) { app in
                                 if sharedModel.isHiddenAppUnlocked {
-                                    LCAppBanner(appModel: app, delegate: self, appDataFolders: $appDataFolderNames, tweakFolders: $tweakFolderNames)
+                                    LCAppBanner(appModel: app, delegate: self)
                                 } else {
                                     LCAppSkeletonBanner()
                                 }

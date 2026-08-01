@@ -8,35 +8,6 @@
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
-import UIKit
-
-
-
-struct LCTweakCopyMode {
-    let onClose: () -> Void
-    let onCopyHere: (URL) -> Void
-}
-
-final class LCTweakMoveContext: ObservableObject {
-    @Published var draggingItemURL: URL?
-    @Published var pendingMoveItemURL: URL?
-
-    func beginDrag(_ url: URL) {
-        draggingItemURL = url
-    }
-
-    func clearDrag() {
-        draggingItemURL = nil
-    }
-
-    func beginMove(_ url: URL) {
-        pendingMoveItemURL = url
-    }
-
-    func clearMove() {
-        pendingMoveItemURL = nil
-    }
-}
 
 struct LCTweakItem : Hashable {
     let fileUrl: URL
@@ -57,35 +28,22 @@ struct LCTweakFolderView : View {
     @State var baseUrl : URL
     @State var tweakItems : [LCTweakItem]
     private var isRoot : Bool
-    private let copyMode: LCTweakCopyMode?
-    @Binding var tweakFolders : [String]
-    
+    @EnvironmentObject private var sharedModel: SharedModel
+
     @State private var errorShow = false
     @State private var errorInfo = ""
-    
-    @StateObject private var newFolderInput = InputHelper()
-    
-    @StateObject private var renameFileInput = InputHelper()
-    
-    @State private var choosingTweak = false
-    @StateObject private var installUrlInput = InputHelper()
-    @ObservedObject var downloadHelper = DownloadHelper()
-    
-    @State private var isTweakSigning = false
-    @State private var isInstallingFromURL = false
-    @State private var helpPresent = false
-    
-    @EnvironmentObject private var moveContext: LCTweakMoveContext
-    
-    private var isCopyMode: Bool {
-        copyMode != nil
-    }
 
-    init(baseUrl: URL, isRoot: Bool = false, tweakFolders: Binding<[String]>, copyMode: LCTweakCopyMode? = nil) {
+    @StateObject private var newFolderInput = InputHelper()
+
+    @StateObject private var renameFileInput = InputHelper()
+
+    @State private var choosingTweak = false
+
+    @State private var isTweakSigning = false
+
+    init(baseUrl: URL, isRoot: Bool = false) {
         _baseUrl = State(initialValue: baseUrl)
-        _tweakFolders = tweakFolders
         self.isRoot = isRoot
-        self.copyMode = copyMode
         var tmpTweakItems : [LCTweakItem] = []
         let fm = FileManager()
         do {
@@ -119,7 +77,7 @@ struct LCTweakFolderView : View {
                                 // hidden link so the row navigates without the toggle triggering it
                                 ZStack {
                                     NavigationLink {
-                                        LCTweakFolderView(baseUrl: tweakItem.fileUrl, isRoot: false, tweakFolders: $tweakFolders)
+                                        LCTweakFolderView(baseUrl: tweakItem.fileUrl, isRoot: false)
                                     } label: {
                                         EmptyView()
                                     }
@@ -165,6 +123,9 @@ struct LCTweakFolderView : View {
                             Label("lc.common.delete".loc, systemImage: "trash")
                         }
                     }
+
+                }.onDelete { indexSet in
+                    deleteTweakItem(indexSet: indexSet)
                 }
             } footer: {
                 if isRoot {
@@ -178,85 +139,47 @@ struct LCTweakFolderView : View {
                 }
             }
         }
-        .onAppear {
-            reloadTweakItems()
-            syncRootTweakFoldersIfNeeded()
-        }
         .navigationTitle(isRoot ? "lc.tabView.tweaks".loc : baseUrl.lastPathComponent)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                if isCopyMode {
-                    if isRoot, let copyMode {
-                        Button("lc.common.close".loc) {
-                            copyMode.onClose()
-                        }
-                    } else {
-                        EmptyView()
-                    }
-                } else {
-                    Button("lc.tweakView.helpButton".loc, systemImage: "questionmark") {
-                        helpPresent = true
-                    }
-                }
-            }
-            
             ToolbarItem(placement: .topBarTrailing) {
-                if let copyMode {
-                    Button("Copy Here") {
-                        copyMode.onCopyHere(baseUrl)
-                    }
-                } else if !isTweakSigning && LCSharedUtils.certificatePassword() != nil {
+                if !isTweakSigning && LCSharedUtils.certificatePassword() != nil {
                     Button {
                         Task { await signAllTweaks() }
                     } label: {
                         Label("sign".loc, systemImage: "signature")
                     }
-                } else {
-                    EmptyView()
                 }
-            }
-            
-            ToolbarItem(placement: .topBarTrailing) {
-                if !isCopyMode {
-                    if !isTweakSigning && !isInstallingFromURL {
-                        Menu {
-                            Button {
-                                if choosingTweak {
-                                    choosingTweak = false
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: {
-                                        choosingTweak = true
-                                    })
-                                } else {
-                                    choosingTweak = true
-                                }
-                            } label: {
-                                Label("lc.tweakView.importTweak".loc, systemImage: "square.and.arrow.down")
-                            }
 
-                            Button {
-                                Task { await startInstallFromUrl() }
-                            } label: {
-                                Label("lc.appList.installFromUrl".loc, systemImage: "link.badge.plus")
-                            }
-                            
-                            Button {
-                                Task { await createNewFolder() }
-                            } label: {
-                                Label("lc.tweakView.newFolder".loc, systemImage: "folder.badge.plus")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if !isTweakSigning {
+                    Menu {
+                        Button {
+                            if choosingTweak {
+                                choosingTweak = false
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: {
+                                    choosingTweak = true
+                                })
+                            } else {
+                                choosingTweak = true
                             }
                         } label: {
-                            Label("add", systemImage: "plus")
+                            Label("lc.tweakView.importTweak".loc, systemImage: "square.and.arrow.down")
                         }
-                    } else {
-                        ProgressView().progressViewStyle(.circular)
+
+                        Button {
+                            Task { await createNewFolder() }
+                        } label: {
+                            Label("lc.tweakView.newFolder".loc, systemImage: "folder.badge.plus")
+                        }
+                    } label: {
+                        Label("add", systemImage: "plus")
                     }
                 } else {
-                    EmptyView()
+                    ProgressView().progressViewStyle(.circular)
                 }
+
             }
-        }
-        .sheet(isPresented: $helpPresent) {
-            LCHelpView(isPresent: $helpPresent)
         }
         .alert("lc.common.error".loc, isPresented: $errorShow) {
             Button("lc.common.ok".loc, action: {
@@ -288,40 +211,13 @@ struct LCTweakFolderView : View {
                 renameFileInput.close(result: "")
             }
         )
-        .textFieldAlert(
-            isPresented: $installUrlInput.show,
-            title:  "lc.appList.installUrlInputTip".loc,
-            text: $installUrlInput.initVal,
-            placeholder: "https://",
-            action: { newText in
-                installUrlInput.close(result: newText)
-            },
-            actionCancel: {_ in
-                installUrlInput.close(result: nil)
-            }
-        )
-        .betterFileImporter(isPresented: $choosingTweak, types: [.dylib, .lcFramework, .zipArchive, .deb], multiple: true, callback: { fileUrls in
-            Task { await importSelectedTweaks(fileUrls) }
+        .betterFileImporter(isPresented: $choosingTweak, types: [.dylib, .lcFramework, /*.deb*/], multiple: true, callback: { fileUrls in
+            Task { await startInstallTweak(fileUrls) }
         }, onDismiss: {
             choosingTweak = false
         })
-        .downloadAlert(helper: downloadHelper)
     }
 
-
-
-    private func dropDraggedItem(into tweakItem: LCTweakItem) -> Bool {
-        guard tweakItem.isFolder || tweakItem.isFramework else {
-            return false
-        }
-        guard let dragURL = moveContext.draggingItemURL else {
-            return false
-        }
-        moveContext.clearDrag()
-        moveTweakItem(from: dragURL, toFolder: tweakItem.fileUrl)
-        return true
-    }
-    
     func setTweakEnabled(tweakItem: LCTweakItem, enabled: Bool) {
         if tweakItem.isEnabled == enabled {
             return
@@ -359,7 +255,7 @@ struct LCTweakFolderView : View {
         }
         if isRoot {
             for iToRemove in indexToRemove {
-                tweakFolders.removeAll(where: { s in
+                sharedModel.tweakFolderNames.removeAll(where: { s in
                     return s == tweakItems[iToRemove].displayName
                 })
             }
@@ -372,6 +268,7 @@ struct LCTweakFolderView : View {
         var indexToRemove : Int?
         let fm = FileManager()
         do {
+
             try fm.removeItem(at: tweakItem.fileUrl)
             indexToRemove = tweakItems.firstIndex(where: { s in
                 return s == tweakItem
@@ -387,12 +284,12 @@ struct LCTweakFolderView : View {
         }
         tweakItems.remove(at: indexToRemove)
         if isRoot {
-            tweakFolders.removeAll(where: { s in
+            sharedModel.tweakFolderNames.removeAll(where: { s in
                 return s == tweakItem.displayName
             })
         }
     }
-    
+
     func renameTweakItem(tweakItem: LCTweakItem) async {
         guard let newName = await renameFileInput.open(initVal: tweakItem.displayName), newName != "" else {
             return
@@ -420,22 +317,22 @@ struct LCTweakFolderView : View {
         tweakItems.insert(newTweakItem, at: indexToRename)
 
         if isRoot {
-            let indexToRename2 = tweakFolders.firstIndex(of: tweakItem.displayName)
+            let indexToRename2 = sharedModel.tweakFolderNames.firstIndex(of: tweakItem.displayName)
             guard let indexToRename2 = indexToRename2 else {
                 return
             }
-            tweakFolders.remove(at: indexToRename2)
-            tweakFolders.insert(newName, at: indexToRename2)
+            sharedModel.tweakFolderNames.remove(at: indexToRename2)
+            sharedModel.tweakFolderNames.insert(newName, at: indexToRename2)
 
         }
     }
-    
+
     func signAllTweaks() async {
         do {
             defer {
                 isTweakSigning = false
             }
-            
+
             try await LCUtils.signTweaks(tweakFolderUrl: self.baseUrl, force: true) { p in
                 isTweakSigning = true
             }
@@ -462,45 +359,15 @@ struct LCTweakFolderView : View {
         }
         tweakItems.append(LCTweakItem(fileUrl: dest, isFolder: true, isFramework: false, isTweak: false, isEnabled: true))
         if isRoot {
-            tweakFolders.append(newName)
+            sharedModel.tweakFolderNames.append(newName)
         }
     }
 
-    func importSelectedTweaks(_ urls: [URL]) async {
-        do {
-            let fm = FileManager.default
-            for fileUrl in urls {
-                if !fileUrl.isFileURL {
-                    throw "lc.tweakView.notFileError %@".localizeWithFormat(fileUrl.lastPathComponent)
-                }
-
-                var didStartAccess = false
-                if !fm.isReadableFile(atPath: fileUrl.path) {
-                    didStartAccess = fileUrl.startAccessingSecurityScopedResource()
-                    if !didStartAccess {
-                        throw "lc.appList.ipaAccessError".loc
-                    }
-                }
-                defer {
-                    if didStartAccess {
-                        fileUrl.stopAccessingSecurityScopedResource()
-                    }
-                }
-
-                try await installDownloadedTweakArtifact(fileUrl)
-            }
-        } catch {
-            errorInfo = error.localizedDescription
-            errorShow = true
-            return
-        }
-    }
-    
     func startInstallTweak(_ urls: [URL]) async {
         do {
             let fm = FileManager()
             // we will sign later before app launch
-            
+
             for fileUrl in urls {
                 // handle deb file
                 if(!fileUrl.isFileURL) {
@@ -508,362 +375,28 @@ struct LCTweakFolderView : View {
                 }
                 let toPath = self.baseUrl.appendingPathComponent(fileUrl.lastPathComponent)
                 try fm.moveItem(at: fileUrl, to: toPath)
+                LCParseMachO((toPath.path as NSString).utf8String, false) { path, header, _, _ in
+                    LCPatchAddRPath(path, header);
+                }
 
                 let isFramework = toPath.lastPathComponent.hasSuffix(".framework")
                 let isTweak = toPath.lastPathComponent.hasSuffix(".dylib")
                 self.tweakItems.append(LCTweakItem(fileUrl: toPath, isFolder: false, isFramework: isFramework, isTweak: isTweak, isEnabled: true))
             }
-            reloadTweakItems()
-        } catch {
-            errorInfo = error.localizedDescription
-            errorShow = true            
-            return
-        }
-    }
-
-
-
-    private func movePendingItemHere() {
-        guard let pendingURL = moveContext.pendingMoveItemURL else {
-            return
-        }
-        moveTweakItem(from: pendingURL, toFolder: baseUrl)
-        moveContext.clearMove()
-    }
-
-    private func moveTweakItem(from sourceURL: URL, toFolder destinationFolderURL: URL) {
-        let sourceFolderURL = sourceURL.deletingLastPathComponent()
-        if sourceFolderURL == destinationFolderURL {
-            return
-        }
-        if sourceURL == destinationFolderURL {
-            errorShow = true
-            errorInfo = "lc.tweakView.error.cannotMoveIntoSelf".loc
-            return
-        }
-        if destinationFolderURL.path.hasPrefix(sourceURL.path + "/") {
-            errorShow = true
-            errorInfo = "lc.tweakView.error.cannotMoveIntoSelf".loc
-            return
-        }
-        let destinationURL = destinationFolderURL.appendingPathComponent(sourceURL.lastPathComponent)
-        let fm = FileManager.default
-        if fm.fileExists(atPath: destinationURL.path) {
-            errorShow = true
-            errorInfo = "lc.tweakView.error.destinationExists %@".localizeWithFormat(sourceURL.lastPathComponent)
-            return
-        }
-        do {
-            try fm.moveItem(at: sourceURL, to: destinationURL)
-            reloadTweakItems()
-            syncRootTweakFoldersIfNeeded()
-        } catch {
-            errorShow = true
-            errorInfo = error.localizedDescription
-        }
-    }
-
-    private func reloadTweakItems() {
-        tweakItems = Self.loadTweakItems(baseUrl)
-    }
-
-    private static func loadTweakItems(_ folderURL: URL) -> [LCTweakItem] {
-        var items: [LCTweakItem] = []
-        let fm = FileManager.default
-        do {
-            let files = try fm.contentsOfDirectory(atPath: folderURL.path)
-            for fileName in files {
-                if fileName == "TweakInfo.plist" {
-                    continue
-                }
-                let fileUrl = folderURL.appendingPathComponent(fileName)
-                var isDirectory: ObjCBool = false
-                fm.fileExists(atPath: fileUrl.path, isDirectory: &isDirectory)
-                let isEnabled = !fileName.hasSuffix(LCTweakItem.disabledSuffix)
-                let baseName = isEnabled ? fileName : String(fileName.dropLast(LCTweakItem.disabledSuffix.count))
-                let isFramework = isDirectory.boolValue && baseName.hasSuffix(".framework")
-                let isTweak = !isDirectory.boolValue && baseName.hasSuffix(".dylib")
-                items.append(LCTweakItem(fileUrl: fileUrl, isFolder: isDirectory.boolValue, isFramework: isFramework, isTweak: isTweak, isEnabled: isEnabled))
-            }
-        } catch {
-            NSLog("[LC] failed to load tweaks \(error.localizedDescription)")
-        }
-        return items.sorted { lhs, rhs in
-            if lhs.isFolder != rhs.isFolder {
-                return lhs.isFolder && !rhs.isFolder
-            }
-            return lhs.fileUrl.lastPathComponent.localizedCaseInsensitiveCompare(rhs.fileUrl.lastPathComponent) == .orderedAscending
-        }
-    }
-
-
-
-    private func syncRootTweakFoldersIfNeeded() {
-        guard isRoot else {
-            return
-        }
-        let fm = FileManager.default
-        do {
-            let dirs = try fm.contentsOfDirectory(atPath: LCPath.tweakPath.path)
-            tweakFolders = dirs.filter { name in
-                if name == "TweakInfo.plist" || name == "TweakLoader.dylib" {
-                    return false
-                }
-                let url = LCPath.tweakPath.appendingPathComponent(name)
-                var isDir: ObjCBool = false
-                return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
-            }.sorted()
-        } catch {
-            NSLog("[LC] failed to sync tweak folders \(error.localizedDescription)")
-        }
-    }
-
-    nonisolated func decompress(_ path: String, _ destination: String, _ progress: Progress) async -> Int32 {
-        extract(path, destination, progress)
-    }
-
-    private func startInstallFromUrl() async {
-        guard let installUrlStr = await installUrlInput.open(), installUrlStr.count > 0 else {
-            return
-        }
-        await installFromUrl(urlStr: installUrlStr)
-    }
-
-    private func installFromUrl(urlStr: String) async {
-        if isInstallingFromURL {
-            return
-        }
-        guard let installURL = URL(string: urlStr.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            errorInfo = "lc.appList.urlInvalidError".loc
-            errorShow = true
-            return
-        }
-
-        isInstallingFromURL = true
-        defer {
-            isInstallingFromURL = false
-        }
-
-        if installURL.isFileURL {
-            let fm = FileManager.default
-            var didStartAccess = false
-            if !fm.isReadableFile(atPath: installURL.path) {
-                didStartAccess = installURL.startAccessingSecurityScopedResource()
-                if !didStartAccess {
-                    errorInfo = "lc.appList.ipaAccessError".loc
-                    errorShow = true
-                    return
-                }
-            }
-            defer {
-                if didStartAccess {
-                    installURL.stopAccessingSecurityScopedResource()
-                }
-            }
-
-            do {
-                try await installDownloadedTweakArtifact(installURL)
-            } catch {
-                errorInfo = error.localizedDescription
-                errorShow = true
-            }
-            return
-        }
-
-        do {
-            let fm = FileManager.default
-            let filename = installURL.lastPathComponent.isEmpty ? "download_\(UUID().uuidString)" : installURL.lastPathComponent
-            let destinationURL = fm.temporaryDirectory.appendingPathComponent(filename)
-            if fm.fileExists(atPath: destinationURL.path) {
-                try fm.removeItem(at: destinationURL)
-            }
-
-            try await downloadHelper.download(url: installURL, to: destinationURL)
-            if downloadHelper.cancelled {
-                return
-            }
-
-            try await installDownloadedTweakArtifact(destinationURL)
-            try? fm.removeItem(at: destinationURL)
         } catch {
             errorInfo = error.localizedDescription
             errorShow = true
-        }
-    }
-
-    private func installDownloadedTweakArtifact(_ artifactURL: URL) async throws {
-        let fm = FileManager.default
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: artifactURL.path, isDirectory: &isDir) else {
-            throw "lc.tweakView.error.downloadedNotFound".loc
-        }
-
-        if isDir.boolValue {
-            if artifactURL.lastPathComponent.hasSuffix(".framework") {
-                await startInstallTweak([artifactURL])
-                return
-            }
-            let candidates = try collectTweakCandidates(in: artifactURL)
-            if candidates.isEmpty {
-                throw "lc.tweakView.error.noTweakInFolder".loc
-            }
-            await startInstallTweak(candidates)
             return
-        }
-
-        if artifactURL.lastPathComponent.hasSuffix(".dylib") {
-            await startInstallTweak([artifactURL])
-            return
-        }
-
-        if isDebPackageURL(artifactURL) {
-            try await installDebPackage(artifactURL)
-            return
-        }
-
-        // Try to treat remote artifact as archive package containing .dylib or .framework
-        let extractionDir = fm.temporaryDirectory.appendingPathComponent("LCTweakExtract_\(UUID().uuidString)")
-        try fm.createDirectory(at: extractionDir, withIntermediateDirectories: true)
-        defer {
-            try? fm.removeItem(at: extractionDir)
-        }
-
-        let extractionProgress = Progress.discreteProgress(totalUnitCount: 100)
-        guard await decompress(artifactURL.path, extractionDir.path, extractionProgress) == 0 else {
-            throw "lc.tweakView.error.unsupportedPackage".loc
-        }
-
-        let candidates = try collectTweakCandidates(in: extractionDir)
-        if candidates.isEmpty {
-            throw "lc.tweakView.error.noTweakInPackage".loc
-        }
-        await startInstallTweak(candidates)
-    }
-
-    private func isDebPackageURL(_ url: URL) -> Bool {
-        url.pathExtension.caseInsensitiveCompare("deb") == .orderedSame
-    }
-
-    private func installDebPackage(_ debURL: URL) async throws {
-        let fm = FileManager.default
-        let debRoot = fm.temporaryDirectory.appendingPathComponent("LCTweakDebExtract_\(UUID().uuidString)")
-        try fm.createDirectory(at: debRoot, withIntermediateDirectories: true)
-        defer {
-            try? fm.removeItem(at: debRoot)
-        }
-
-        let debProgress = Progress.discreteProgress(totalUnitCount: 100)
-        guard await decompress(debURL.path, debRoot.path, debProgress) == 0 else {
-            throw "lc.tweakView.error.unsupportedPackage".loc
-        }
-
-        var candidates = try collectTweakCandidates(in: debRoot)
-        let dataArchives = try findDebDataArchives(in: debRoot)
-
-        if dataArchives.isEmpty && candidates.isEmpty {
-            throw "lc.tweakView.error.unsupportedPackage".loc
-        }
-
-        for (index, dataArchive) in dataArchives.enumerated() {
-            let payloadDir = debRoot.appendingPathComponent("payload_\(index)")
-            try fm.createDirectory(at: payloadDir, withIntermediateDirectories: true)
-            let payloadProgress = Progress.discreteProgress(totalUnitCount: 100)
-            guard await decompress(dataArchive.path, payloadDir.path, payloadProgress) == 0 else {
-                continue
-            }
-            candidates.append(contentsOf: try collectTweakCandidates(in: payloadDir))
-        }
-
-        let deduped = dedupCandidateURLs(candidates)
-        if deduped.isEmpty {
-            throw "lc.tweakView.error.noTweakInPackage".loc
-        }
-        await startInstallTweak(deduped)
-    }
-
-    private func findDebDataArchives(in rootURL: URL) throws -> [URL] {
-        let fm = FileManager.default
-        let files = try fm.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-        return files.filter { url in
-            let name = url.lastPathComponent.lowercased()
-            return name.hasPrefix("data.tar")
-        }.sorted {
-            $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending
-        }
-    }
-
-    private func dedupCandidateURLs(_ candidates: [URL]) -> [URL] {
-        var seen = Set<String>()
-        var deduped: [URL] = []
-        for url in candidates {
-            let key = url.standardizedFileURL.path
-            if seen.insert(key).inserted {
-                deduped.append(url)
-            }
-        }
-        return deduped.sorted {
-            $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending
-        }
-    }
-
-    private func collectTweakCandidates(in rootURL: URL) throws -> [URL] {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(at: rootURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else {
-            return []
-        }
-        var candidates: [URL] = []
-        for case let fileURL as URL in enumerator {
-            var isDir: ObjCBool = false
-            if !fm.fileExists(atPath: fileURL.path, isDirectory: &isDir) {
-                continue
-            }
-            if isDir.boolValue {
-                if fileURL.lastPathComponent.hasSuffix(".framework") {
-                    candidates.append(fileURL)
-                    enumerator.skipDescendants()
-                }
-                continue
-            }
-            if fileURL.lastPathComponent.hasSuffix(".dylib") {
-                candidates.append(fileURL)
-            }
-        }
-        return candidates.sorted {
-            $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending
         }
     }
 }
 
 struct LCTweaksView: View {
-    @Binding var tweakFolders : [String]
-    @StateObject private var moveContext = LCTweakMoveContext()
-    
     var body: some View {
         NavigationView {
-            LCTweakFolderView(baseUrl: LCPath.tweakPath, isRoot: true, tweakFolders: $tweakFolders)
+            LCTweakFolderView(baseUrl: LCPath.tweakPath, isRoot: true)
         }
-        .environmentObject(moveContext)
         .navigationViewStyle(StackNavigationViewStyle())
 
-    }
-}
-
-struct LCTweaksCopyDestinationView: View {
-    @Binding var tweakFolders: [String]
-    let onClose: () -> Void
-    let onCopyHere: (URL) -> Void
-    @StateObject private var moveContext = LCTweakMoveContext()
-    
-    var body: some View {
-        NavigationView {
-            LCTweakFolderView(
-                baseUrl: LCPath.tweakPath,
-                isRoot: true,
-                tweakFolders: $tweakFolders,
-                copyMode: LCTweakCopyMode(onClose: onClose, onCopyHere: onCopyHere)
-            )
-        }
-        .environmentObject(moveContext)
-        .navigationViewStyle(StackNavigationViewStyle())
     }
 }

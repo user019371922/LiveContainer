@@ -18,7 +18,7 @@ struct SafariView: UIViewControllerRepresentable {
         return SFSafariViewController(url: url.wrappedValue)
     }
     func updateUIViewController(_ uiViewController: SFSafariViewController, context: UIViewControllerRepresentableContext<SafariView>) {
-        
+
     }
 }
 
@@ -35,7 +35,7 @@ extension View {
     ) -> some View {
         self.modifier(TextFieldAlertModifier(isPresented: isPresented, title: title, text: text, placeholder: placeholder, action: action, actionCancel: actionCancel))
     }
-    
+
     public func betterFileImporter(
         isPresented: Binding<Bool>,
         types : [UTType],
@@ -45,33 +45,29 @@ extension View {
     ) -> some View {
         self.modifier(DocModifier(isPresented: isPresented, types: types, multiple: multiple, callback: callback, onDismiss: onDismiss))
     }
-    
-    func betterContextMenu(menuProvider: @escaping () -> UIMenu) -> some View {
-        self.modifier(UIKitContextMenuModifier(menuProvider: menuProvider))
-    }
-    
+
     func onBackground(_ f: @escaping () -> Void) -> some View {
         self.onReceive(
             NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification),
             perform: { _ in f() }
         )
     }
-    
+
     func onForeground(_ f: @escaping () -> Void) -> some View {
         self.onReceive(
             NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification),
             perform: { _ in f() }
         )
     }
-    
+
     func rainbow() -> some View {
         self.modifier(RainbowAnimation())
     }
-    
+
     func navigationBarProgressBar(show: Binding<Bool>, progress: Binding<Float>) -> some View {
         self.modifier(NavigationBarProgressModifier(show: show, progress: progress))
     }
-    
+
     func modifier<ModifiedContent: View>(@ViewBuilder body: (_ content: Self) -> ModifiedContent
     ) -> ModifiedContent {
         body(self)
@@ -82,14 +78,14 @@ public struct DocModifier: ViewModifier {
     @EnvironmentObject var sceneDelegate: SceneDelegate
     @State private var docController: UIDocumentPickerViewController?
     @State private var delegate : UIDocumentPickerDelegate
-    
+
     @Binding var isPresented: Bool
 
     var callback: ([URL]) -> ()
     private let onDismiss: () -> Void
     private let types : [UTType]
     private let multiple : Bool
-    
+
     init(isPresented : Binding<Bool>, types : [UTType], multiple : Bool, callback: @escaping ([URL]) -> (), onDismiss: @escaping () -> Void) {
         self.callback = callback
         self.onDismiss = onDismiss
@@ -118,16 +114,16 @@ public struct DocModifier: ViewModifier {
         isPresented = false
         docController = nil
     }
-    
+
     class Coordinator: NSObject, UIDocumentPickerDelegate {
         var callback: ([URL]) -> ()
         private let onDismiss: () -> Void
-        
+
         init(callback: @escaping ([URL]) -> Void, onDismiss: @escaping () -> Void) {
             self.callback = callback
             self.onDismiss = onDismiss
         }
-        
+
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
             callback(urls)
             onDismiss()
@@ -313,15 +309,6 @@ struct ActivityViewController: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: UIViewControllerRepresentableContext<ActivityViewController>) {}
 }
 
-
-private struct UIKitContextMenuModifier : ViewModifier {
-    let menuProvider: () -> UIMenu
-    
-    func body(content: Content) -> some View {
-        UIKitContextMenuContainer(menuProvider: menuProvider, content: content)
-    }
-}
-
 private class SizedHostingController<Content: View>: UIHostingController<Content> {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -333,72 +320,70 @@ private class SizedHostingController<Content: View>: UIHostingController<Content
     }
 }
 
-private struct UIKitContextMenuContainer<Content: View>: UIViewControllerRepresentable {
-    let menuProvider: () -> UIMenu
-    let content: Content
-
-    init(menuProvider: @escaping () -> UIMenu,  content: Content) {
-        self.menuProvider = menuProvider
-        self.content = content
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(menuProvider: menuProvider)
-    }
-
-    func makeUIViewController(context: Context) -> UIHostingController<Content> {
-        let controller: UIHostingController<Content>
-        
-        if #available(iOS 16.0, *) {
-            controller = UIHostingController(rootView: content)
-            controller.sizingOptions = [.intrinsicContentSize]
-        } else {
-            controller = SizedHostingController(rootView: content)
-        }
-        controller.view.backgroundColor = .clear
-        controller.view.addInteraction(UIContextMenuInteraction(delegate: context.coordinator))
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: UIHostingController<Content>, context: Context) {
-        uiViewController.rootView = content
-        context.coordinator.menuProvider = menuProvider
-    }
-
-    @available(iOS 16.0, *)
-    func sizeThatFits(_ proposal: ProposedViewSize, uiViewController: UIHostingController<Content>, context: Context) -> CGSize? {
-        let targetSize = CGSize(
-            width: proposal.width ?? UIView.layoutFittingCompressedSize.width,
-            height: proposal.height ?? UIView.layoutFittingCompressedSize.height
-        )
-
-        return uiViewController.sizeThatFits(in: targetSize)
-    }
-
-    final class Coordinator: NSObject, UIContextMenuInteractionDelegate {
-        var menuProvider: () -> UIMenu
-
-        init(menuProvider: @escaping () -> UIMenu) {
-            self.menuProvider = menuProvider
-        }
-
-        func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
-            UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
-                self.menuProvider()
-            }
-        }
-    }
-}
-
 struct IconImageView: View {
     var icon: UIImage
-    
+
     var body: some View {
         GeometryReader { g in
             Image(uiImage: icon)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: g.size.width*0.2667))
+        }
+    }
+}
+
+
+extension UIViewController {
+    func presentConfirmation(
+        title: String,
+        message: String,
+        confirmTitle: String,
+        cancelTitle: String
+    ) async -> Bool? {
+        guard viewIfLoaded?.window != nil, presentedViewController == nil else {
+            return nil
+        }
+
+        return await withUnsafeContinuation { continuation in
+            let finishConfirmation =  { (result: Bool?, alert: UIAlertController?) in
+                alert?.dismiss(animated: true) {
+                    continuation.resume(returning: result)
+                }
+            }
+
+            let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: confirmTitle, style: .destructive) { [weak alert] _ in
+                finishConfirmation(true, alert)
+            })
+            alert.addAction(UIAlertAction(title: cancelTitle, style: .cancel) { [weak alert] _ in
+                finishConfirmation(false, alert)
+            })
+            present(alert, animated: true)
+        }
+    }
+
+    func showError(_ message: String) {
+        guard viewIfLoaded?.window != nil else {
+            return
+        }
+
+        let presentError = { [weak self] in
+            guard let self else {
+                return
+            }
+            let alert = UIAlertController(title: "lc.common.error".loc, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "lc.common.ok".loc, style: .default))
+            alert.addAction(UIAlertAction(title: "lc.common.copy".loc, style: .default) { _ in
+                UIPasteboard.general.string = message
+            })
+            self.present(alert, animated: true)
+        }
+
+        if let presentedViewController {
+            presentedViewController.dismiss(animated: true, completion: presentError)
+        } else {
+            presentError()
         }
     }
 }
