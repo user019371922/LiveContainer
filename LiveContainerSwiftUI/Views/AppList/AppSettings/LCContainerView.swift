@@ -219,7 +219,7 @@ struct LCContainerView : View {
                                 .foregroundStyle(.secondary)
                         }
                         DisclosureGroup("Category Kill Switches") {
-                            categoryToggle("Identity", isOn: $container.spoofIdentityCategoryEnabled)
+                            categoryToggle("Device Identity", isOn: $container.spoofIdentityCategoryEnabled)
                             categoryToggle("System", isOn: $container.spoofSystemCategoryEnabled)
                             categoryToggle("Display", isOn: $container.spoofDisplayCategoryEnabled)
                             categoryToggle("Locale & Time Zone", isOn: $container.spoofLocaleCategoryEnabled)
@@ -232,13 +232,23 @@ struct LCContainerView : View {
                             categoryToggle("Audio Routes", isOn: $container.spoofAudioCategoryEnabled)
                             categoryToggle("Graphics & Metal", isOn: $container.spoofGraphicsCategoryEnabled)
                             categoryToggle("WebView Fingerprint", isOn: $container.spoofWebViewCategoryEnabled)
-                            categoryToggle("App, Account & Pasteboard", isOn: $container.spoofAppPrivacyCategoryEnabled)
-                            categoryToggle("Sensors & Personal Data", isOn: $container.spoofSensorsAndUserDataCategoryEnabled)
+                            categoryToggle("App & Account Privacy", isOn: $container.spoofAppPrivacyCategoryEnabled)
+                            categoryToggle("Sensors & Permissions", isOn: $container.spoofSensorsAndUserDataCategoryEnabled)
                         }
-                        Text("Disable an individual category if an app depends on the real API. Sensors & Personal Data intentionally reports permissions or hardware as unavailable instead of fabricating contacts, photos, locations, or sensor samples.")
+                        Text("Disable an individual category if an app depends on the real API. Sensors & Permissions reports selected capabilities as unavailable or denied; it does not fabricate contacts, photos, locations, or sensor samples.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        DisclosureGroup("Identity") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Button("Use Current Device Values") {
+                                applyCurrentDeviceProfileValues()
+                                saveSpoofProfile()
+                            }
+                            Button("Generate Random Profile") {
+                                applyRandomDeviceProfileValues()
+                                saveSpoofProfile()
+                            }
+                        }
+                        DisclosureGroup("Device Identity") {
                         Toggle(isOn: $container.spoofIdentifierForVendor) {
                             Text("lc.container.spoofIdentifierForVendor".loc)
                         }
@@ -506,14 +516,6 @@ struct LCContainerView : View {
                             }
                         }
                         featureToggle("Hide Active Keyboard/Input Modes", "locale.inputModes")
-                        Button("Use Current Device Values") {
-                            applyCurrentDeviceProfileValues()
-                            saveSpoofProfile()
-                        }
-                        Button("Generate Random Profile") {
-                            applyRandomDeviceProfileValues()
-                            saveSpoofProfile()
-                        }
                         }
                         .disabled(!container.spoofLocaleCategoryEnabled)
 
@@ -589,13 +591,7 @@ struct LCContainerView : View {
                         }
                         .disabled(!container.spoofNetworkHeadersCategoryEnabled)
 
-                        DisclosureGroup("Accessibility & Appearance") {
-                            Picker("Appearance", selection: $container.spoofUserInterfaceStyle) {
-                                Text("Use System").tag(0)
-                                Text("Light Mode").tag(1)
-                                Text("Dark Mode").tag(2)
-                            }
-                            .onChange(of: container.spoofUserInterfaceStyle) { _ in saveSpoofProfile() }
+                        DisclosureGroup("Accessibility") {
                             Picker("Contrast", selection: $container.spoofAccessibilityContrast) {
                                 Text("Normal").tag(0)
                                 Text("High").tag(1)
@@ -716,33 +712,37 @@ struct LCContainerView : View {
                         }
                         .disabled(!container.spoofWebViewCategoryEnabled)
 
-                        DisclosureGroup("App, Account & Pasteboard") {
+                        DisclosureGroup("App & Account Privacy") {
                             featureToggle("Hide URL-Scheme App Detection", "app.canOpenURL")
                             featureToggle("Hide Installed Font Families", "app.fonts")
                             featureToggle("Hide Installed Speech Voices", "app.voices")
                             featureToggle("Hide iCloud Account Identity", "app.iCloud")
+                        }
+                        .disabled(!container.spoofAppPrivacyCategoryEnabled)
+
+                        DisclosureGroup("Pasteboard") {
                             featureToggle("Use Isolated General Pasteboard", "app.pasteboard")
                         }
                         .disabled(!container.spoofAppPrivacyCategoryEnabled)
 
-                        DisclosureGroup("Sensors & Personal Data") {
-                            DisclosureGroup("Sensors Reported Unavailable") {
-                                featureToggle("Accelerometer", "sensors.accelerometer")
-                                featureToggle("Gyroscope", "sensors.gyroscope")
-                                featureToggle("Magnetometer", "sensors.magnetometer")
-                                featureToggle("Device Motion", "sensors.deviceMotion")
-                                featureToggle("Pedometer Capabilities", "sensors.pedometer")
-                                featureToggle("Altimeter Capabilities", "sensors.altimeter")
-                            }
-                            DisclosureGroup("Permissions Reported Denied") {
-                                featureToggle("Location", "permissions.location")
-                                featureToggle("Camera and Microphone", "permissions.capture")
-                                featureToggle("Photos", "permissions.photos")
-                                featureToggle("Contacts", "permissions.contacts")
-                                featureToggle("Calendars and Reminders", "permissions.events")
-                                featureToggle("Media Library", "permissions.media")
-                                featureToggle("Bluetooth", "permissions.bluetooth")
-                            }
+                        DisclosureGroup("Sensors") {
+                            featureToggle("Accelerometer", "sensors.accelerometer")
+                            featureToggle("Gyroscope", "sensors.gyroscope")
+                            featureToggle("Magnetometer", "sensors.magnetometer")
+                            featureToggle("Device Motion", "sensors.deviceMotion")
+                            featureToggle("Pedometer Capabilities", "sensors.pedometer")
+                            featureToggle("Altimeter Capabilities", "sensors.altimeter")
+                        }
+                        .disabled(!container.spoofSensorsAndUserDataCategoryEnabled)
+
+                        DisclosureGroup("Permissions") {
+                            featureToggle("Location", "permissions.location")
+                            featureToggle("Camera and Microphone", "permissions.capture")
+                            featureToggle("Photos", "permissions.photos")
+                            featureToggle("Contacts", "permissions.contacts")
+                            featureToggle("Calendars and Reminders", "permissions.events")
+                            featureToggle("Media Library", "permissions.media")
+                            featureToggle("Bluetooth", "permissions.bluetooth")
                         }
                         .disabled(!container.spoofSensorsAndUserDataCategoryEnabled)
                         }
