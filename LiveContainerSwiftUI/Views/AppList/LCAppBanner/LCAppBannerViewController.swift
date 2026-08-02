@@ -16,9 +16,9 @@ struct LCAppBannerConfiguration {
 
 final class LCAppBannerViewController: UIViewController, UIContextMenuInteractionDelegate, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
 
-    private let delegate: LCAppBannerDelegate
+    fileprivate let delegate: LCAppBannerDelegate
     private let bannerView = LCAppBannerRootView()
-    private var configuration: LCAppBannerConfiguration
+    fileprivate var configuration: LCAppBannerConfiguration
     private var exportTemporaryDirectory: URL?
 
     init(delegate: LCAppBannerDelegate, config: LCAppBannerConfiguration) {
@@ -194,6 +194,55 @@ final class LCAppBannerViewController: UIViewController, UIContextMenuInteractio
             ]
         )
         sectionChildren.append(addToHomeScreenMenu)
+
+        let dataExportDisabled: UIMenuElement.Attributes = model.uiSelectedContainer == nil ? [.disabled] : []
+        sectionChildren.append(UIMenu(
+            title: "Export",
+            image: UIImage(systemName: "square.and.arrow.up"),
+            children: [
+                UIAction(
+                    title: "Export IPA",
+                    image: UIImage(systemName: "shippingbox")
+                ) { [weak self] _ in
+                    Task { [weak self] in
+                        await self?.exportIPA(includeData: false)
+                    }
+                },
+                UIAction(
+                    title: "Export Data",
+                    image: UIImage(systemName: "folder.fill"),
+                    attributes: dataExportDisabled
+                ) { [weak self] _ in
+                    Task { [weak self] in
+                        await self?.exportData()
+                    }
+                },
+                UIAction(
+                    title: "Export IPA + Data",
+                    image: UIImage(systemName: "square.and.arrow.up.on.square"),
+                    attributes: dataExportDisabled
+                ) { [weak self] _ in
+                    Task { [weak self] in
+                        await self?.exportIPA(includeData: true)
+                    }
+                },
+                UIAction(
+                    title: "Export Dylibs & Frameworks",
+                    image: UIImage(systemName: "list.bullet.rectangle")
+                ) { [weak self] _ in
+                    self?.openDylibAndFrameworkExportSelection()
+                }
+            ]
+        ))
+
+        sectionChildren.append(UIAction(
+            title: "Clone App",
+            image: UIImage(systemName: "square.on.square")
+        ) { [weak self] _ in
+            Task { [weak self] in
+                await self?.cloneApp()
+            }
+        })
 
         sectionChildren.append(UIAction(
             title: "lc.tabView.settings".loc,
