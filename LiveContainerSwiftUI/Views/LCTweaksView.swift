@@ -9,11 +9,6 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct LCTweakCopyMode {
-    let onClose: () -> Void
-    let onCopyHere: (URL) -> Void
-}
-
 struct LCTweakItem : Hashable {
     let fileUrl: URL
     let isFolder: Bool
@@ -33,7 +28,6 @@ struct LCTweakFolderView : View {
     @State var baseUrl : URL
     @State var tweakItems : [LCTweakItem]
     private var isRoot : Bool
-    private let copyMode: LCTweakCopyMode?
     @EnvironmentObject private var sharedModel: SharedModel
 
     @State private var errorShow = false
@@ -47,14 +41,9 @@ struct LCTweakFolderView : View {
 
     @State private var isTweakSigning = false
 
-    private var isCopyMode: Bool {
-        copyMode != nil
-    }
-
-    init(baseUrl: URL, isRoot: Bool = false, copyMode: LCTweakCopyMode? = nil) {
+    init(baseUrl: URL, isRoot: Bool = false) {
         _baseUrl = State(initialValue: baseUrl)
         self.isRoot = isRoot
-        self.copyMode = copyMode
         var tmpTweakItems : [LCTweakItem] = []
         let fm = FileManager()
         do {
@@ -88,7 +77,7 @@ struct LCTweakFolderView : View {
                                 // hidden link so the row navigates without the toggle triggering it
                                 ZStack {
                                     NavigationLink {
-                                        LCTweakFolderView(baseUrl: tweakItem.fileUrl, isRoot: false, copyMode: copyMode)
+                                        LCTweakFolderView(baseUrl: tweakItem.fileUrl, isRoot: false)
                                     } label: {
                                         EmptyView()
                                     }
@@ -152,19 +141,8 @@ struct LCTweakFolderView : View {
         }
         .navigationTitle(isRoot ? "lc.tabView.tweaks".loc : baseUrl.lastPathComponent)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                if isCopyMode, isRoot, let copyMode {
-                    Button("lc.common.close".loc) {
-                        copyMode.onClose()
-                    }
-                }
-            }
             ToolbarItem(placement: .topBarTrailing) {
-                if let copyMode {
-                    Button("Copy Here") {
-                        copyMode.onCopyHere(baseUrl)
-                    }
-                } else if !isTweakSigning && LCSharedUtils.certificatePassword() != nil {
+                if !isTweakSigning && LCSharedUtils.certificatePassword() != nil {
                     Button {
                         Task { await signAllTweaks() }
                     } label: {
@@ -174,33 +152,31 @@ struct LCTweakFolderView : View {
 
             }
             ToolbarItem(placement: .topBarTrailing) {
-                if !isCopyMode {
-                    if !isTweakSigning {
-                        Menu {
-                            Button {
-                                if choosingTweak {
-                                    choosingTweak = false
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: {
-                                        choosingTweak = true
-                                    })
-                                } else {
+                if !isTweakSigning {
+                    Menu {
+                        Button {
+                            if choosingTweak {
+                                choosingTweak = false
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: {
                                     choosingTweak = true
-                                }
-                            } label: {
-                                Label("lc.tweakView.importTweak".loc, systemImage: "square.and.arrow.down")
-                            }
-
-                            Button {
-                                Task { await createNewFolder() }
-                            } label: {
-                                Label("lc.tweakView.newFolder".loc, systemImage: "folder.badge.plus")
+                                })
+                            } else {
+                                choosingTweak = true
                             }
                         } label: {
-                            Label("add", systemImage: "plus")
+                            Label("lc.tweakView.importTweak".loc, systemImage: "square.and.arrow.down")
                         }
-                    } else {
-                        ProgressView().progressViewStyle(.circular)
+
+                        Button {
+                            Task { await createNewFolder() }
+                        } label: {
+                            Label("lc.tweakView.newFolder".loc, systemImage: "folder.badge.plus")
+                        }
+                    } label: {
+                        Label("add", systemImage: "plus")
                     }
+                } else {
+                    ProgressView().progressViewStyle(.circular)
                 }
 
             }
@@ -415,26 +391,10 @@ struct LCTweakFolderView : View {
     }
 }
 
-struct LCTweaksCopyDestinationView: View {
-    let onClose: () -> Void
-    let onCopyHere: (URL) -> Void
-
-    var body: some View {
-        NavigationView {
-            LCTweakFolderView(
-                baseUrl: LCPath.tweakPath,
-                isRoot: true,
-                copyMode: LCTweakCopyMode(onClose: onClose, onCopyHere: onCopyHere)
-            )
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
-    }
-}
-
 struct LCTweaksView: View {
     var body: some View {
         NavigationView {
-            LCTweakFolderView(baseUrl: LCPath.tweakPath, isRoot: true)
+            LCTweakManagementRootView()
         }
         .navigationViewStyle(StackNavigationViewStyle())
 
