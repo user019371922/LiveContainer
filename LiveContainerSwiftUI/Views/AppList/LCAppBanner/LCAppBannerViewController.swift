@@ -18,7 +18,7 @@ final class LCAppBannerViewController: UIViewController, UIContextMenuInteractio
 
     fileprivate let delegate: LCAppBannerDelegate
     private let bannerView = LCAppBannerRootView()
-    fileprivate var configuration: LCAppBannerConfiguration
+    private(set) var configuration: LCAppBannerConfiguration
     private var exportTemporaryDirectory: URL?
 
     init(delegate: LCAppBannerDelegate, config: LCAppBannerConfiguration) {
