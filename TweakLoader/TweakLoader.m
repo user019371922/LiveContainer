@@ -3,7 +3,7 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <objc/runtime.h>
-#include "utils.h"
+#import "../LiveContainer/utils.h"
 
 static NSString *const kDisabledTweaksKey = @"disabledItems";
 static NSString *const kContainerInfoFileName = @"LCContainerInfo.plist";

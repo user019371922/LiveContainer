@@ -9,7 +9,7 @@
 #endif
 #import "LCSharedUtils.h"
 #import "UIKitPrivate.h"
-#import "utils.h"
+#import "../LiveContainer/utils.h"
 #import <LocalAuthentication/LocalAuthentication.h>
 #import "Localization.h"
 #include <sys/sysctl.h>
