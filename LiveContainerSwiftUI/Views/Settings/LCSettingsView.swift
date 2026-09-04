@@ -18,7 +18,7 @@ enum JITEnablerType : Int, CaseIterable, Identifiable {
     case SideStore = 4
     case StosDebug = 5
     case StosDebugLC = 6
-    
+
     var displayName: String {
         switch self {
         case .StikJIT: "StikDebug"
@@ -39,13 +39,13 @@ struct LCSettingsView: View {
     @State var successInfo = ""
 
     @State private var certificateDataFound = false
-    
+
     @StateObject private var certificateImportAlert = YesNoHelper()
     @StateObject private var certificateImportFromBuiltInSideStoreAlert = YesNoHelper()
     @StateObject private var certificateRemoveAlert = YesNoHelper()
     @StateObject private var certificateImportFileAlert = AlertHelper<URL>()
     @StateObject private var certificateImportPasswordAlert = InputHelper()
-    
+
     @AppStorage("LCFrameShortcutIcons") var frameShortIcon = false
     @AppStorage("LCSwitchAppWithoutAsking") var silentSwitchApp = false
     @AppStorage("LCOpenWebPageWithoutAsking") var silentOpenWebPage = false
@@ -53,34 +53,32 @@ struct LCSettingsView: View {
     @AppStorage("LCStrictHiding", store: LCUtils.appGroupUserDefault) var strictHiding = false
     @AppStorage("dynamicColors", store: LCUtils.appGroupUserDefault) var dynamicColors = true
     @AppStorage("darkModeIcon", store: LCUtils.appGroupUserDefault) var darkModeIcon = false
-    
+
     @AppStorage("LCSideJITServerAddress", store: LCUtils.appGroupUserDefault) var sideJITServerAddress : String = ""
     @AppStorage("LCDeviceUDID", store: LCUtils.appGroupUserDefault) var deviceUDID: String = ""
     @AppStorage("LCJITEnablerType", store: LCUtils.appGroupUserDefault) var JITEnabler: JITEnablerType = .SideJITServer
-    
+
     @State var store : Store = .Unknown
-    
+
     @AppStorage("LCLoadTweaksToSelf") var injectToLCItelf = false
     @AppStorage("LCIgnoreJITOnLaunch") var ignoreJITOnLaunch = false
-    #if is32BitSupported
-    @AppStorage("selected32BitLayer", store: LCUtils.appGroupUserDefault) var liveExec32Path : String = ""
-    #endif
+    @AppStorage("LCSelected32BitEmulator", store: LCUtils.appGroupUserDefault) var selected32BitEmulator : String = ""
     @AppStorage("LCKeepSelectedWhenQuit") var keepSelectedWhenQuit = false
     @AppStorage("LCWaitForDebugger") var waitForDebugger = false
     @AppStorage("LCSharePrivateDataWithLiveProcess") var sharePrivateDataWithLiveProcess = false
     @AppStorage("BKNoWatchdogs") var disableLiveProcessWatchdog = false
-    
+
     @EnvironmentObject private var sharedModel : SharedModel
-    
+
     @State private var isViewAppeared = false
-    
+
     let storeName = LCUtils.getStoreName()
-    
+
     init() {
         _certificateDataFound = State(initialValue: LCSharedUtils.certificatePassword() != nil)
         _store = State(initialValue: LCUtils.store())
     }
-    
+
     var body: some View {
         NavigationView {
             Form {
@@ -110,7 +108,7 @@ struct LCSettingsView: View {
                                 }
                             }
                         }
-                        
+
                         NavigationLink {
                             LCJITLessDiagnoseView()
                         } label: {
@@ -133,10 +131,10 @@ struct LCSettingsView: View {
                             } else if sharedModel.multiLCStatus == 2 {
                                 Text("lc.settings.multiLCIsSecond".loc)
                             }
-                            
+
                         }
                         .disabled(sharedModel.multiLCStatus == 2)
-                        
+
                         if(sharedModel.multiLCStatus == 2) {
                             NavigationLink {
                                 LCJITLessDiagnoseView()
@@ -148,7 +146,7 @@ struct LCSettingsView: View {
                         Text("lc.settings.multiLCDesc".loc)
                     }
                 }
-                
+
                 if #available(iOS 16.1, *) {
                     Section {
                         NavigationLink {
@@ -160,7 +158,7 @@ struct LCSettingsView: View {
                         Text("lc.settings.multitaskDesc".loc)
                     }
                 }
-                
+
                 Section {
                     if JITEnabler == .SideJITServer || JITEnabler == .JITStreamerEBLegacy {
                         HStack {
@@ -191,7 +189,18 @@ struct LCSettingsView: View {
                 } footer: {
                     Text("lc.settings.JitDesc".loc)
                 }
-                
+
+                Section {
+                    Picker(selection: $selected32BitEmulator) {
+                        ForEach(sharedModel.arm32EmuApps, id: \.self) { app in
+                            Text("lc.common.none".loc).tag("")
+                            Text(app.appInfo.displayName()).tag(app.appInfo.relativeBundlePath!)
+                        }
+                    } label: {
+                        Text("lc.settings.selected32BitEmulator".loc)
+                    }
+                }
+
                 Section{
                     Toggle(isOn: $dynamicColors) {
                         Text("lc.settings.dynamicColors".loc)
@@ -201,7 +210,7 @@ struct LCSettingsView: View {
                             Text("lc.settings.darkModeIcon".loc)
                         }
                     }
-                    
+
                 } header: {
                     Text("lc.settings.interface".loc)
                 } footer: {
@@ -216,7 +225,7 @@ struct LCSettingsView: View {
                 } footer: {
                     Text("lc.settings.FrameIconDesc".loc)
                 }
-                
+
                 Section {
                     Toggle(isOn: $silentSwitchApp) {
                         Text("lc.settings.silentSwitchApp".loc)
@@ -224,7 +233,7 @@ struct LCSettingsView: View {
                 } footer: {
                     Text("lc.settings.silentSwitchAppDesc".loc)
                 }
-                
+
                 Section {
                     Toggle(isOn: $silentOpenWebPage) {
                         Text("lc.settings.silentOpenWebPage".loc)
@@ -232,7 +241,7 @@ struct LCSettingsView: View {
                 } footer: {
                     Text("lc.settings.silentOpenWebPageDesc".loc)
                 }
-                
+
                 if sharedModel.isHiddenAppUnlocked {
                     Section {
                         Toggle(isOn: $strictHiding) {
@@ -242,7 +251,7 @@ struct LCSettingsView: View {
                         Text("lc.settings.strictHidingDesc".loc)
                     }
                 }
-                
+
                 Section {
                     Toggle(isOn: $dontSignApp) {
                         Text("lc.settings.dontSign".loc)
@@ -273,7 +282,7 @@ struct LCSettingsView: View {
                         Text("lc.settings.dataManagement".loc)
                     }
                 }
-                
+
                 Section {
                     HStack {
                         Image("GitHub")
@@ -298,7 +307,7 @@ struct LCSettingsView: View {
                 } footer: {
                     Text("lc.settings.warning".loc)
                 }
-                
+
                 VStack{
                     Text(LCUtils.getVersionInfo())
                         .foregroundStyle(.gray)
@@ -309,7 +318,7 @@ struct LCSettingsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     .background(Color(UIColor.systemGroupedBackground))
                     .listRowInsets(EdgeInsets())
-                
+
                 if sharedModel.developerMode {
                     Section {
                         Toggle(isOn: $injectToLCItelf) {
@@ -361,14 +370,6 @@ struct LCSettingsView: View {
                             Text("Show FLEX Overlay")
                         }
                         .disabled(NSClassFromString("FLEXManager") == nil)
-                        #if is32BitSupported
-                        HStack {
-                            Text("LiveExec32 .app path")
-                            Spacer()
-                            TextField("", text: $liveExec32Path)
-                                .multilineTextAlignment(.trailing)
-                        }
-                        #endif
                     } header: {
                         Text("Developer Settings")
                     } footer: {
@@ -457,15 +458,15 @@ struct LCSettingsView: View {
             handleURL(url: link)
         }
     }
-    
+
     func openGitHub() {
         UIApplication.shared.open(URL(string: "https://github.com/LiveContainer/LiveContainer")!)
     }
-    
+
     func openGitHub2() {
         UIApplication.shared.open(URL(string: "https://github.com/hugeBlack")!)
     }
-    
+
     func openTwitter() {
         UIApplication.shared.open(URL(string: "https://twitter.com/khanhduytran0")!)
     }
@@ -484,7 +485,7 @@ struct LCSettingsView: View {
     func export() {
         let fileManager = FileManager.default
         let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        
+
         // 1. Copy embedded.mobileprovision from the main bundle to Documents
         if let embeddedURL = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision") {
             let destinationURL = documentsURL.appendingPathComponent("embedded.mobileprovision")
@@ -497,7 +498,7 @@ struct LCSettingsView: View {
         } else {
             print("embedded.mobileprovision not found in the main bundle.")
         }
-        
+
         // 2. Read "certData" from UserDefaults and save to cert.p12 in Documents
         if let certData = LCUtils.certificateData() {
             let certFileURL = documentsURL.appendingPathComponent("cert.p12")
@@ -510,7 +511,7 @@ struct LCSettingsView: View {
         } else {
             print("certData not found in UserDefaults.")
         }
-        
+
         // 3. Read "certPassword" from UserDefaults and save to pass.txt in Documents
         if let certPassword = LCSharedUtils.certificatePassword() {
             let passwordFileURL = documentsURL.appendingPathComponent("pass.txt")
@@ -524,7 +525,7 @@ struct LCSettingsView: View {
             print("certPassword not found in UserDefaults.")
         }
     }
-    
+
     func exportMainBundle() {
         let url = Bundle.main.bundleURL
         let fileManager = FileManager.default
@@ -537,17 +538,17 @@ struct LCSettingsView: View {
             print("Error copying main bundle \(error)")
         }
     }
-    
+
     func resetSymbolOffsets() {
         LCUtils.appGroupUserDefault.removeObject(forKey: "symbolOffsetCache")
     }
-    
+
     func presentFLEXOverlay() {
         let manager = (NSClassFromString("FLEXManager") as? NSObject.Type)?.perform(NSSelectorFromString("sharedManager"))
             .takeUnretainedValue() as? NSObject
         manager?.perform(NSSelectorFromString("showExplorer"))
     }
-    
+
     func importCertificate() async {
         guard let doImport = await certificateImportAlert.open(), doImport else {
             return
@@ -566,7 +567,7 @@ struct LCSettingsView: View {
             errorShow = true
             return
         }
-        
+
         guard let _ = LCUtils.getCertTeamId(withKeyData: certificateData, password: certificatePassword) else {
             errorInfo = "lc.settings.invalidCertError".loc
             errorShow = true
@@ -580,7 +581,7 @@ struct LCSettingsView: View {
 
         UserDefaults.standard.set(LCSharedUtils.appGroupID(), forKey: "LCAppGroupID")
     }
-    
+
     func importCertificateFromSideStore() async {
         if UserDefaults.sideStoreExist() {
             if let ans = await certificateImportFromBuiltInSideStoreAlert.open(), ans {
@@ -592,10 +593,10 @@ struct LCSettingsView: View {
                     kSecAttrService as String: "com.kdt.livecontainer",
                     kSecAttrSynchronizable as String: kSecAttrSynchronizableAny
                 ]
-                
+
                 var item: CFTypeRef?
                 let status = SecItemCopyMatching(query as CFDictionary, &item)
-                
+
                 guard status == errSecSuccess else {
                     if status == errSecItemNotFound {
                         errorInfo = "lc.settings.importCertFromBuiltinSideStore.certNotFounndErr".loc
@@ -632,18 +633,18 @@ struct LCSettingsView: View {
                 }
 
                 onSideStoreCertificateCallback(certificateData: data, password: password)
-                
+
                 return
             }
         }
-        
+
         let storeScheme : String
         if store == .AltStore {
             storeScheme = "altstore-classic"
         } else {
             storeScheme = "sidestore"
         }
-        
+
         guard let url = URL(string: "\(storeScheme.lowercased())://certificate?callback_template=livecontainer%3A%2F%2Fcertificate%3Fcert%3D%24%28BASE64_CERT%29%26password%3D%24%28PASSWORD%29") else {
             errorInfo = "Failed to initialize certificate import URL."
             errorShow = true
@@ -657,7 +658,7 @@ struct LCSettingsView: View {
         LCUtils.appGroupUserDefault.set(NSDate.now, forKey: "LCCertificateUpdateDate")
         certificateDataFound = true
     }
-    
+
     func removeCertificate() async {
         guard let doRemove = await certificateRemoveAlert.open(), doRemove else {
             return
@@ -670,7 +671,7 @@ struct LCSettingsView: View {
 
         UserDefaults.standard.set(nil, forKey: "LCAppGroupID")
     }
-    
+
     func nukeSideStore() async {
         guard let doRemove = await certificateRemoveAlert.open(), doRemove else {
             return
@@ -684,7 +685,7 @@ struct LCSettingsView: View {
             print("wtf \(error)")
         }
     }
-    
+
     func exportDyld() {
         let url = URL(fileURLWithPath: "/usr/lib/dyld")
         let fileManager = FileManager.default
@@ -697,7 +698,7 @@ struct LCSettingsView: View {
             print("Error copying dyld \(error)")
         }
     }
-    
+
     func handleURL(url: URL) {
         if url.host == "certificate" {
             if let components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
@@ -706,9 +707,9 @@ struct LCSettingsView: View {
                       let password = queryItems["password"],
                       let certData = Data(base64Encoded: encodedCert)
                 else { return }
-                
+
                 onSideStoreCertificateCallback(certificateData: certData, password: password)
-                
+
             }
         }
     }

@@ -10,14 +10,14 @@ protocol LCAppModelDelegate {
 }
 
 class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
-    
+
     @Published var appInfo : LCAppInfo
-    
+
     @Published var isAppRunning = false
     @Published var isSigningInProgress = false
     @Published var signProgress = 0.0
     private var observer : NSKeyValueObservation?
-    
+
     @Published var uiIsJITNeeded : Bool {
         didSet {
             appInfo.isJITNeeded = uiIsJITNeeded
@@ -34,9 +34,8 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
     @Published var uiDefaultDataFolder : String?
     @Published var uiContainers : [LCContainer]
     @Published var uiSelectedContainer : LCContainer?
-#if is32BitSupported
     @Published var uiIs32bit : Bool
-#endif
+    @Published var uiIs32bitEmulator : Bool
     @Published var uiTweakFolder : String? {
         didSet {
             appInfo.tweakFolder = uiTweakFolder
@@ -52,7 +51,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             appInfo.doUseLCBundleId = uiUseLCBundleId
         }
     }
-    
+
     @Published var uiFixFilePickerNew : Bool {
         didSet {
             appInfo.fixFilePickerNew = uiFixFilePickerNew
@@ -63,7 +62,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             appInfo.fixLocalNotification = uiFixLocalNotification
         }
     }
-    
+
     @Published var uiHideLiveContainer : Bool {
         didSet {
             appInfo.hideLiveContainer = uiHideLiveContainer
@@ -90,16 +89,22 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             appInfo.selectedLanguage = uiSelectedLanguage
         }
     }
-    
+
     @Published var uiDontSign : Bool {
         didSet {
             appInfo.dontSign = uiDontSign
         }
     }
-    
+
     @Published var jitLaunchScriptJs: String? {
         didSet {
             appInfo.jitLaunchScriptJs = jitLaunchScriptJs
+        }
+    }
+
+    @Published var uiSelected32BitEmulator : String {
+        didSet {
+            appInfo.selected32BitEmulator = uiSelected32BitEmulator
         }
     }
 
@@ -108,43 +113,43 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             appInfo.spoofSDKVersion = uiSpoofSDKVersion
         }
     }
-    
+
     @Published var uiRemark : String {
         didSet {
             appInfo.remark = uiRemark
         }
     }
-    
+
     @Published var uiAutoCleanCacheOnLaunch: Bool {
         didSet {
             appInfo.autoCleanCacheOnLaunch = uiAutoCleanCacheOnLaunch
         }
     }
-    
+
     @Published var uiIsMultitaskModeSpecificed : MultitaskSpecified {
         didSet {
             appInfo.multitaskSpecified = uiIsMultitaskModeSpecificed;
         }
     }
-    
+
     public var bundleIdentifier: String {
         get {
             return appInfo.bundleIdentifier() ?? "?"
         }
     }
-    
+
     public var version: String {
         get {
             return appInfo.version() ?? "?"
         }
     }
-    
+
     public var displayName: String {
         get {
             return appInfo.displayName() ?? "?"
         }
     }
-    
+
     public var shouldLaunchInMultitaskMode : Bool {
         get {
             if #available(iOS 16.0, *) {
@@ -155,11 +160,11 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             }
         }
     }
-    
+
     @Published var supportedLanguages : [String]?
-    
+
     var delegate : LCAppModelDelegate?
-    
+
     init(appInfo : LCAppInfo, delegate: LCAppModelDelegate? = nil) {
         self.appInfo = appInfo
         self.delegate = delegate
@@ -167,7 +172,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
         if !appInfo.isLocked && appInfo.isHidden {
             appInfo.isLocked = true
         }
-        
+
         self.uiIsJITNeeded = appInfo.isJITNeeded
         self.uiClassicMode = appInfo.classicMode
         self.uiIsHidden = appInfo.isHidden
@@ -189,12 +194,12 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
         self.uiDontLoadTweakLoader = appInfo.dontLoadTweakLoader
         self.uiDontSign = appInfo.dontSign
         self.jitLaunchScriptJs = appInfo.jitLaunchScriptJs
+        self.uiSelected32BitEmulator = appInfo.selected32BitEmulator ?? ""
         self.uiSpoofSDKVersion = appInfo.spoofSDKVersion
         self.uiRemark = appInfo.remark ?? ""
         self.uiAutoCleanCacheOnLaunch = appInfo.autoCleanCacheOnLaunch
-#if is32BitSupported
         self.uiIs32bit = appInfo.is32bit
-#endif
+        self.uiIs32bitEmulator = appInfo.is32bitEmulator
         for container in uiContainers {
             if container.folderName == uiDefaultDataFolder {
                 self.uiSelectedContainer = container;
@@ -202,21 +207,21 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             }
         }
     }
-    
+
     static func == (lhs: LCAppModel, rhs: LCAppModel) -> Bool {
         return lhs === rhs
     }
-    
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(ObjectIdentifier(self))
     }
-    
+
     // You should let LCAppModel.runApp to decide whether to run in multitask mode, but you may override the multitask parameter if necessary
     func runApp(multitask: Bool? = nil, containerFolderName : String? = nil, bundleIdOverride : String? = nil, urlStr : String? = nil, forceJIT: Bool? = nil) async throws{
         if isAppRunning {
             return
         }
-        
+
         if uiContainers.isEmpty {
             let newName = NSUUID().uuidString
             let newContainer = LCContainer(folderName: newName, name: newName, isShared: uiIsShared)
@@ -233,30 +238,30 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             uiSelectedContainer = uiContainers.first { $0.folderName == containerFolderName } ?? uiSelectedContainer
         }
         let currentDataFolder = containerFolderName ?? uiSelectedContainer?.folderName
-        
+
         let classicMode = appInfo.defaultClassicMode
         let multitask = classicMode == 0 ? (multitask ?? shouldLaunchInMultitaskMode) : false
-        
+
         if MultitaskManager.isMultitasking() || multitask,
            let currentDataFolder {
             if await bringExistingMultitaskWindowIfNeeded(dataUUID: currentDataFolder, urlScheme: urlStr) {
                 return
             }
-            
+
         }
-        
+
         // this is rerouted to bringing app to front, so not needed here?
 //        if(MultitaskManager.isUsing(container: uiSelectedContainer!.folderName)) {
 //            throw "lc.container.inUse".loc + "\n MultiTask"
 //        }
-        
+
         // if the selected container is in use (either other lc or multitask), open the host lc associated with it
         if
             let fn = uiSelectedContainer?.folderName,
             var runningLC = LCSharedUtils.getContainerUsingLCScheme(withFolderName: fn)
         {
             runningLC = (runningLC as NSString).deletingPathExtension
-            
+
             var openURLComp = URLComponents()
             openURLComp.scheme = runningLC
             if let urlStr {
@@ -270,7 +275,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
                 return
             }
         }
-        
+
         // find a free lc to run non-multitasking shared app. If none, ask user if they want to terminate all multitasking apps
         if MultitaskManager.isMultitasking() && !multitask {
             if self.uiIsShared {
@@ -297,9 +302,9 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
                     if let folderName = uiSelectedContainer?.folderName {
                         queryItems.append(URLQueryItem(name: "container-folder-name", value: folderName))
                     }
-                    
+
                     launchURLComp.queryItems = queryItems
-                    
+
                     if let url = launchURLComp.url {
                         await UIApplication.shared.open(url)
                     } else {
@@ -308,12 +313,12 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
                     return
                 }
             }
-            
+
             guard let ans = await delegate?.showRunWhenMultitaskAlert(), ans else {
                 return
             }
         }
-        
+
         await MainActor.run {
             isAppRunning = true
         }
@@ -323,7 +328,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             }}
         }
         try await signApp(force: false)
-        
+
         if let bundleIdOverride {
             UserDefaults.standard.set(bundleIdOverride, forKey: "selected")
         } else {
@@ -333,16 +338,15 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             UserDefaults.standard.setValue(urlStr, forKey: "launchAppUrlScheme")
         }
         UserDefaults.standard.set(uiSelectedContainer?.folderName, forKey: "selectedContainer")
-        var is32bit = false
-        
-        #if is32BitSupported
-        is32bit = appInfo.is32bit
-        #endif
-        var jitNeeded = appInfo.isJITNeeded
+
+        var jitNeeded = appInfo.isJITNeeded || appInfo.is32bit
         if let forceJIT {
             jitNeeded = forceJIT
         }
-        if jitNeeded || is32bit {
+#if targetEnvironment(simulator)
+        jitNeeded = false
+#endif
+        if jitNeeded {
             if multitask, #available(iOS 17.4, *) {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     LCUtils.launchMultitaskGuestApp(appInfo.displayName()) { pidNumber, error in
@@ -386,7 +390,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             }
             LCSharedUtils.launchToGuestApp(withClassicMode: classicMode)
         }
-        
+
         // Record the launch time
         appInfo.lastLaunched = Date()
 
@@ -394,7 +398,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             isAppRunning = false
         }
     }
-    
+
     func forceResign() async throws {
         if isAppRunning {
             return
@@ -408,7 +412,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
         }
         try await signApp(force: true)
     }
-    
+
     func signApp(force: Bool = false) async throws {
         var signError : String? = nil
         var signSuccess = false
@@ -417,7 +421,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
                 self.isSigningInProgress = false
             }}
         }
-        
+
         await withUnsafeContinuation({ c in
             appInfo.patchExecAndSignIfNeed(completionHandler: { success, error in
                 signError = error;
@@ -440,12 +444,12 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
                 throw signError.loc
             }
         }
-        
+
         // sign its tweak
         guard let tweakFolder = appInfo.tweakFolder else {
             return
         }
-        
+
         let tweakFolderUrl : URL
         if(appInfo.isShared) {
             tweakFolderUrl = LCPath.lcGroupTweakPath.appendingPathComponent(tweakFolder)
@@ -457,7 +461,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
                 self.isSigningInProgress = true
             }}
         }
-        
+
         // sign global tweak
         try await LCUtils.signTweaks(tweakFolderUrl: LCPath.tweakPath, force: force) { p in
             Task{ await MainActor.run {
@@ -471,7 +475,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
         if appInfo.isLocked == newLockState {
             return
         }
-        
+
         if newLockState {
             appInfo.isLocked = true
         } else {
@@ -486,7 +490,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
                 uiIsLocked = true
                 return
             }
-            
+
             // auth pass, we need to cancel app's lock and hidden state
             appInfo.isLocked = false
             if appInfo.isHidden {
@@ -494,7 +498,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
             }
         }
     }
-    
+
     func toggleHidden() async {
         delegate?.closeNavigationView()
         if appInfo.isHidden {
@@ -506,7 +510,7 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
         }
         delegate?.changeAppVisibility(app: self)
     }
-    
+
     func loadSupportedLanguages() throws {
         let fm = FileManager.default
         if supportedLanguages != nil {
@@ -521,9 +525,9 @@ class LCAppModel: ObservableObject, Hashable, @unchecked Sendable {
                 supportedLanguages?.append(fileURL.deletingPathExtension().lastPathComponent)
             }
         }
-        
+
     }
-    
+
     private func bringExistingMultitaskWindowIfNeeded(dataUUID: String, urlScheme: String?) async -> Bool {
         guard #available(iOS 16.0, *) else { return false }
         return await MainActor.run {
