@@ -686,8 +686,8 @@ void bypass_os_variant_has_internal_content(void (^block)(void)) {
     
     block();
     
-#if !TARGET_OS_SIMULATOR
     if (xctest) objc_disposeClassPair(xctest);
+#if !TARGET_OS_SIMULATOR
     *internalRelTypePtr = orig;
 #endif
 }
