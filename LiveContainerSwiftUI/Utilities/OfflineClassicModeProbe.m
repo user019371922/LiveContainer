@@ -265,7 +265,7 @@ NSNumber *LCGetDefaultClassicMode(NSURL *appURL) {
                                      entitlements:@{}];
     
     SBApplicationInfo* sbAppInfo;
-    if ([SBApplicationInfoClass respondsToSelector:@selector(_initWithApplicationProxy:record:appIdentity:processIdentity:overrideURL:)]) {
+    if ([SBApplicationInfoClass instancesRespondToSelector:@selector(_initWithApplicationProxy:record:appIdentity:processIdentity:overrideURL:)]) {
         sbAppInfo = [[SBApplicationInfoClass alloc] _initWithApplicationProxy:proxy record:[LCFakeApplicationRecord new] appIdentity:[LCFakeApplicationIdentity new] processIdentity:[LCFakeProcessIdentity new] overrideURL:appURL];
     } else {
         sbAppInfo = [[SBApplicationInfoClass alloc] _initWithApplicationProxy:proxy overrideURL:appURL];
